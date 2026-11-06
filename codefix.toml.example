@@ -1,0 +1,42 @@
+[project]
+name = "example-project"
+python = "3.12"
+exclude = ["migrations/*", "build/*"]     # glob patterns relative to the project root
+
+[behavior]
+formatter = "ruff"                  # ruff | black | auto | none  (ruff falls back to black)
+allow_risky = false
+minimum_confidence = 0.80
+require_tests_for_risky = true
+backup_before_write = true
+rollback_on_failure = true          # restore the backup when tests fail after a write
+max_passes = 3                      # autofix re-analysis passes
+
+[knowledge]
+packs = ["python"]                  # python | django | fastapi | flask | security | project
+paths = []                          # extra directories holding knowledge packs
+
+[rules]
+disabled = []
+blocked = []                        # findings are reported but can never be auto-fixed
+
+[metrics]
+max_function_lines = 50
+max_complexity = 10
+max_params = 5
+max_returns = 6
+max_calls = 30
+max_nesting = 4
+min_duplicate_statements = 4
+
+[tests]
+command = "python -m pytest"        # leave empty to disable test verification
+run_after_write = true
+timeout = 600
+
+[security]
+minimum_confidence = 0.95           # security rules use stricter defaults
+allow_autofix = false               # security fixes always require explicit approval
+
+[plugins]
+modules = []                        # importable modules exposing register(registry)

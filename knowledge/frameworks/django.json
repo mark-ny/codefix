@@ -1,0 +1,18 @@
+[
+  {
+    "id": "DJANGO_MODEL_NO_STR",
+    "category": "framework",
+    "severity": "review",
+    "confidence": 0.7,
+    "autofix": false,
+    "requires_tests": false,
+    "message": "Model class defines no __str__.",
+    "description": "Django models should define __str__ for admin and shell readability.",
+    "bad": "class Book(models.Model):\n    title = models.CharField(max_length=100)\n",
+    "good": "class Book(models.Model):\n    title = models.CharField(max_length=100)\n\n    def __str__(self):\n        return self.title\n",
+    "frameworks": [
+      "django"
+    ],
+    "implemented": false
+  }
+]

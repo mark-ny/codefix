@@ -1,0 +1,18 @@
+[
+  {
+    "id": "FASTAPI_BLOCKING_IN_ASYNC",
+    "category": "framework",
+    "severity": "review",
+    "confidence": 0.6,
+    "autofix": false,
+    "requires_tests": false,
+    "message": "Blocking call inside an async endpoint.",
+    "description": "Blocking I/O in `async def` endpoints stalls the event loop.",
+    "bad": "@app.get('/x')\nasync def x():\n    time.sleep(1)\n",
+    "good": "@app.get('/x')\nasync def x():\n    await asyncio.sleep(1)\n",
+    "frameworks": [
+      "fastapi"
+    ],
+    "implemented": false
+  }
+]

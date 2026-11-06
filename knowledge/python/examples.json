@@ -1,0 +1,536 @@
+{
+ "UNDEFINED_NAME": [
+  {
+   "name": "missing name",
+   "kind": "detect",
+   "code": "def f():\n    return missing\n"
+  },
+  {
+   "name": "parameter",
+   "kind": "negative",
+   "code": "def f(a):\n    return a\n"
+  },
+  {
+   "name": "star import suppresses",
+   "kind": "negative",
+   "code": "from os.path import *\nprint(join)\n"
+  },
+  {
+   "name": "NameError guard",
+   "kind": "negative",
+   "code": "try:\n    unicode\nexcept NameError:\n    unicode = str\n"
+  },
+  {
+   "name": "comprehension variable",
+   "kind": "negative",
+   "code": "print([i for i in range(3)])\n"
+  },
+  {
+   "name": "forward reference in function",
+   "kind": "negative",
+   "code": "def f():\n    return g()\n\ndef g():\n    return 1\n"
+  }
+ ],
+ "UNUSED_IMPORT": [
+  {
+   "name": "whole statements",
+   "kind": "fix",
+   "bad": "import os\nimport sys\n\nprint(sys.argv)\n",
+   "good": "import sys\n\nprint(sys.argv)\n"
+  },
+  {
+   "name": "partial from-import",
+   "kind": "fix",
+   "bad": "from typing import List, Dict\n\nx: Dict = {}\n",
+   "good": "from typing import Dict\n\nx: Dict = {}\n",
+   "edge": true
+  },
+  {
+   "name": "sole statement in block",
+   "kind": "fix",
+   "bad": "if True:\n    import os\n",
+   "good": "if True:\n    pass\n",
+   "edge": true
+  },
+  {
+   "name": "unicode text after",
+   "kind": "fix",
+   "bad": "import os\ns = 'é€'\n",
+   "good": "s = 'é€'\n",
+   "edge": true
+  },
+  {
+   "name": "used import",
+   "kind": "negative",
+   "code": "import os\nprint(os.name)\n"
+  },
+  {
+   "name": "in __all__",
+   "kind": "negative",
+   "code": "import os\n__all__ = ['os']\n"
+  },
+  {
+   "name": "string annotation",
+   "kind": "negative",
+   "code": "from typing import List\nx: 'List[int]' = []\n"
+  },
+  {
+   "name": "import guard",
+   "kind": "negative",
+   "code": "try:\n    import ujson\nexcept ImportError:\n    ujson = None\n"
+  },
+  {
+   "name": "future import",
+   "kind": "negative",
+   "code": "from __future__ import annotations\n"
+  }
+ ],
+ "SHADOW_BUILTIN": [
+  {
+   "name": "parameter",
+   "kind": "detect",
+   "code": "def f(list):\n    return list\n"
+  },
+  {
+   "name": "variable",
+   "kind": "detect",
+   "code": "id = 3\n"
+  },
+  {
+   "name": "renamed",
+   "kind": "negative",
+   "code": "def f(items):\n    return items\n"
+  },
+  {
+   "name": "class attribute",
+   "kind": "negative",
+   "code": "class A:\n    id = 1\n"
+  }
+ ],
+ "UNREACHABLE_CODE": [
+  {
+   "name": "after return",
+   "kind": "detect",
+   "code": "def f():\n    return 1\n    print('never')\n"
+  },
+  {
+   "name": "after continue",
+   "kind": "detect",
+   "code": "for i in range(3):\n    continue\n    print(i)\n"
+  },
+  {
+   "name": "reachable",
+   "kind": "negative",
+   "code": "def f(x):\n    if x:\n        return 1\n    return 2\n"
+  }
+ ],
+ "MUTABLE_DEFAULT": [
+  {
+   "name": "list default",
+   "kind": "fix",
+   "bad": "def add(item, bucket=[]):\n    bucket.append(item)\n    return bucket\n",
+   "good": "def add(item, bucket=None):\n    if bucket is None:\n        bucket = []\n    bucket.append(item)\n    return bucket\n"
+  },
+  {
+   "name": "docstring is preserved first",
+   "kind": "fix",
+   "bad": "def f(a, items=[]):\n    \"\"\"Doc.\"\"\"\n    return items\n",
+   "good": "def f(a, items=None):\n    \"\"\"Doc.\"\"\"\n    if items is None:\n        items = []\n    return items\n",
+   "edge": true
+  },
+  {
+   "name": "several defaults, method indent",
+   "kind": "fix",
+   "bad": "class A:\n    def m(self, a={}, b=set()):\n        return a, b\n",
+   "good": "class A:\n    def m(self, a=None, b=None):\n        if a is None:\n            a = {}\n        if b is None:\n            b = set()\n        return a, b\n",
+   "edge": true
+  },
+  {
+   "name": "same-line body is reported but not fixed",
+   "kind": "detect",
+   "code": "def f(a=[]): return a\n"
+  },
+  {
+   "name": "immutable defaults",
+   "kind": "negative",
+   "code": "def f(a=(), b=None, c=0):\n    return a\n"
+  }
+ ],
+ "BARE_EXCEPT": [
+  {
+   "name": "bare except",
+   "kind": "fix",
+   "bad": "try:\n    work()\nexcept:\n    handle()\n",
+   "good": "try:\n    work()\nexcept Exception:\n    handle()\n"
+  },
+  {
+   "name": "trailing comment kept",
+   "kind": "fix",
+   "bad": "try:\n    work()\nexcept:  # why\n    handle()\n",
+   "good": "try:\n    work()\nexcept Exception:  # why\n    handle()\n",
+   "edge": true
+  },
+  {
+   "name": "cleanup then re-raise",
+   "kind": "negative",
+   "code": "try:\n    work()\nexcept:\n    cleanup()\n    raise\n"
+  },
+  {
+   "name": "typed except",
+   "kind": "negative",
+   "code": "try:\n    work()\nexcept ValueError:\n    handle()\n"
+  }
+ ],
+ "EXCEPT_PASS": [
+  {
+   "name": "swallowed",
+   "kind": "detect",
+   "code": "try:\n    work()\nexcept Exception:\n    pass\n"
+  },
+  {
+   "name": "specific exception",
+   "kind": "negative",
+   "code": "try:\n    work()\nexcept KeyError:\n    pass\n"
+  },
+  {
+   "name": "handled",
+   "kind": "negative",
+   "code": "try:\n    work()\nexcept Exception:\n    log()\n"
+  }
+ ],
+ "COMPARE_NONE": [
+  {
+   "name": "equals none",
+   "kind": "fix",
+   "bad": "if value == None:\n    pass\n",
+   "good": "if value is None:\n    pass\n"
+  },
+  {
+   "name": "unicode before operator",
+   "kind": "fix",
+   "bad": "s = 'é€'\nif s != None:\n    pass\n",
+   "good": "s = 'é€'\nif s is not None:\n    pass\n",
+   "edge": true
+  },
+  {
+   "name": "none on the left",
+   "kind": "fix",
+   "bad": "if None == x:\n    pass\n",
+   "good": "if None is x:\n    pass\n",
+   "edge": true
+  },
+  {
+   "name": "comment between operands",
+   "kind": "fix",
+   "bad": "if (x ==  # c\n        None):\n    pass\n",
+   "good": "if (x is  # c\n        None):\n    pass\n",
+   "edge": true
+  },
+  {
+   "name": "already identity",
+   "kind": "negative",
+   "code": "if x is None:\n    pass\n"
+  },
+  {
+   "name": "other equality",
+   "kind": "negative",
+   "code": "if x == 1:\n    pass\n"
+  }
+ ],
+ "COMPARE_LITERAL": [
+  {
+   "name": "is int",
+   "kind": "fix",
+   "bad": "if status is 200:\n    pass\n",
+   "good": "if status == 200:\n    pass\n"
+  },
+  {
+   "name": "is not str",
+   "kind": "fix",
+   "bad": "if name is not 'a':\n    pass\n",
+   "good": "if name != 'a':\n    pass\n",
+   "edge": true
+  },
+  {
+   "name": "negative number",
+   "kind": "fix",
+   "bad": "if n is -1:\n    pass\n",
+   "good": "if n == -1:\n    pass\n",
+   "edge": true
+  },
+  {
+   "name": "is None/True",
+   "kind": "negative",
+   "code": "if x is None or y is True:\n    pass\n"
+  }
+ ],
+ "ASSERT_TUPLE": [
+  {
+   "name": "condition and message",
+   "kind": "fix",
+   "bad": "assert(x > 0, 'x must be positive')\n",
+   "good": "assert x > 0, 'x must be positive'\n"
+  },
+  {
+   "name": "single element tuple",
+   "kind": "fix",
+   "bad": "assert(x,)\n",
+   "good": "assert x\n",
+   "edge": true
+  },
+  {
+   "name": "three elements are reported only",
+   "kind": "detect",
+   "code": "assert (a, b, c)\n"
+  },
+  {
+   "name": "proper assert",
+   "kind": "negative",
+   "code": "assert x > 0, 'positive'\n"
+  }
+ ],
+ "TYPE_COMPARE": [
+  {
+   "name": "equals",
+   "kind": "fix",
+   "bad": "if type(x) == int:\n    pass\n",
+   "good": "if isinstance(x, int):\n    pass\n"
+  },
+  {
+   "name": "not equals",
+   "kind": "fix",
+   "bad": "if type(x) != str:\n    pass\n",
+   "good": "if not isinstance(x, str):\n    pass\n",
+   "edge": true
+  },
+  {
+   "name": "type vs type",
+   "kind": "negative",
+   "code": "if type(a) == type(b):\n    pass\n"
+  },
+  {
+   "name": "isinstance",
+   "kind": "negative",
+   "code": "if isinstance(x, int):\n    pass\n"
+  }
+ ],
+ "RESOURCE_NO_CONTEXT": [
+  {
+   "name": "plain open",
+   "kind": "detect",
+   "code": "f = open('x')\nf.read()\n"
+  },
+  {
+   "name": "with statement",
+   "kind": "negative",
+   "code": "with open('x') as f:\n    f.read()\n"
+  },
+  {
+   "name": "returned handle",
+   "kind": "negative",
+   "code": "def opener(p):\n    return open(p)\n"
+  },
+  {
+   "name": "later used in with",
+   "kind": "negative",
+   "code": "f = open('x')\nwith f:\n    f.read()\n"
+  }
+ ],
+ "INCONSISTENT_RETURN": [
+  {
+   "name": "bare return",
+   "kind": "fix",
+   "bad": "def f(x):\n    if x:\n        return 1\n    return\n",
+   "good": "def f(x):\n    if x:\n        return 1\n    return None\n"
+  },
+  {
+   "name": "elif branch",
+   "kind": "fix",
+   "bad": "def f(x):\n    if x:\n        return 1\n    elif x is None:\n        return\n    return 2\n",
+   "good": "def f(x):\n    if x:\n        return 1\n    elif x is None:\n        return None\n    return 2\n",
+   "edge": true
+  },
+  {
+   "name": "falls off the end",
+   "kind": "detect",
+   "code": "def f(x):\n    if x:\n        return 1\n"
+  },
+  {
+   "name": "consistent",
+   "kind": "negative",
+   "code": "def f(x):\n    if x:\n        return 1\n    return 2\n"
+  },
+  {
+   "name": "generator",
+   "kind": "negative",
+   "code": "def f(x):\n    yield 1\n    return\n"
+  },
+  {
+   "name": "annotated None",
+   "kind": "negative",
+   "code": "def f(x) -> None:\n    if x:\n        return\n"
+  }
+ ],
+ "MISSING_DOCSTRING": [
+  {
+   "name": "public function",
+   "kind": "detect",
+   "code": "def area(w, h):\n    return w * h\n"
+  },
+  {
+   "name": "public method",
+   "kind": "detect",
+   "code": "class A:\n    def run(self):\n        pass\n"
+  },
+  {
+   "name": "documented",
+   "kind": "negative",
+   "code": "def area(w, h):\n    \"\"\"Area.\"\"\"\n    return w * h\n"
+  },
+  {
+   "name": "private",
+   "kind": "negative",
+   "code": "def _helper():\n    pass\n"
+  },
+  {
+   "name": "nested",
+   "kind": "negative",
+   "code": "def outer():\n    '''d'''\n    def inner():\n        pass\n"
+  }
+ ],
+ "STRING_CONCAT_LOOP": [
+  {
+   "name": "augmented assign",
+   "kind": "detect",
+   "code": "out = ''\nfor w in words:\n    out += w\n"
+  },
+  {
+   "name": "s = s + x",
+   "kind": "detect",
+   "code": "s = ''\nfor w in words:\n    s = s + w\n"
+  },
+  {
+   "name": "numbers",
+   "kind": "negative",
+   "code": "total = 0\nfor n in nums:\n    total += n\n"
+  }
+ ],
+ "FUNCTION_TOO_LONG": [
+  {
+   "name": "limit 3",
+   "kind": "detect",
+   "code": "def f():\n    a = 1\n    b = 2\n    return a + b\n",
+   "config": {
+    "max_function_lines": 3
+   }
+  },
+  {
+   "name": "default limit",
+   "kind": "negative",
+   "code": "def f():\n    a = 1\n    b = 2\n    return a + b\n"
+  }
+ ],
+ "HIGH_COMPLEXITY": [
+  {
+   "name": "limit 2",
+   "kind": "detect",
+   "code": "def f(a, b):\n    if a:\n        pass\n    if b:\n        pass\n",
+   "config": {
+    "max_complexity": 2
+   }
+  },
+  {
+   "name": "default limit",
+   "kind": "negative",
+   "code": "def f(a, b):\n    if a:\n        pass\n    if b:\n        pass\n"
+  }
+ ],
+ "TOO_MANY_PARAMS": [
+  {
+   "name": "limit 2",
+   "kind": "detect",
+   "code": "def f(a, b, c):\n    pass\n",
+   "config": {
+    "max_params": 2
+   }
+  },
+  {
+   "name": "self not counted",
+   "kind": "negative",
+   "code": "class A:\n    def f(self, a, b):\n        pass\n",
+   "config": {
+    "max_params": 2
+   }
+  },
+  {
+   "name": "default limit",
+   "kind": "negative",
+   "code": "def f(a, b, c):\n    pass\n"
+  }
+ ],
+ "TOO_MANY_RETURNS": [
+  {
+   "name": "limit 2",
+   "kind": "detect",
+   "code": "def f(x):\n    if x == 1:\n        return 1\n    if x == 2:\n        return 2\n    return 3\n",
+   "config": {
+    "max_returns": 2
+   }
+  },
+  {
+   "name": "default limit",
+   "kind": "negative",
+   "code": "def f(x):\n    if x == 1:\n        return 1\n    return 3\n"
+  }
+ ],
+ "TOO_MANY_CALLS": [
+  {
+   "name": "limit 2",
+   "kind": "detect",
+   "code": "def f():\n    a()\n    b()\n    c()\n",
+   "config": {
+    "max_calls": 2
+   }
+  },
+  {
+   "name": "default limit",
+   "kind": "negative",
+   "code": "def f():\n    a()\n    b()\n    c()\n"
+  }
+ ],
+ "EXCESSIVE_NESTING": [
+  {
+   "name": "limit 2",
+   "kind": "detect",
+   "code": "def f(a, b, c):\n    if a:\n        if b:\n            if c:\n                pass\n",
+   "config": {
+    "max_nesting": 2
+   }
+  },
+  {
+   "name": "elif chain is flat",
+   "kind": "negative",
+   "code": "def f(a):\n    if a == 1:\n        pass\n    elif a == 2:\n        pass\n    elif a == 3:\n        pass\n",
+   "config": {
+    "max_nesting": 1
+   }
+  },
+  {
+   "name": "default limit",
+   "kind": "negative",
+   "code": "def f(a, b, c):\n    if a:\n        if b:\n            if c:\n                pass\n"
+  }
+ ],
+ "DUPLICATE_CODE": [
+  {
+   "name": "identical functions",
+   "kind": "detect",
+   "code": "def one(x):\n    a = x + 1\n    b = a * 2\n    c = b - 3\n    d = c / 4\n    return d\n\ndef two(x):\n    a = x + 1\n    b = a * 2\n    c = b - 3\n    d = c / 4\n    return d\n"
+  },
+  {
+   "name": "different bodies",
+   "kind": "negative",
+   "code": "def one(x):\n    a = x + 1\n    b = a * 2\n    c = b - 3\n    d = c / 4\n    return d\n\ndef two(x):\n    return x\n"
+  }
+ ]
+}

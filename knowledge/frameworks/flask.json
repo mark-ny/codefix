@@ -1,0 +1,18 @@
+[
+  {
+    "id": "FLASK_MUTABLE_GLOBAL_IN_VIEW",
+    "category": "framework",
+    "severity": "review",
+    "confidence": 0.6,
+    "autofix": false,
+    "requires_tests": false,
+    "message": "View mutates module-level state.",
+    "description": "Module globals are shared between requests and threads.",
+    "bad": "CACHE = []\n\n@app.route('/')\ndef index():\n    CACHE.append(1)\n",
+    "good": "@app.route('/')\ndef index():\n    cache = []\n    cache.append(1)\n",
+    "frameworks": [
+      "flask"
+    ],
+    "implemented": false
+  }
+]
