@@ -1,6 +1,7 @@
 """``codefix knowledge list|show|validate|test|feedback``."""
 from __future__ import annotations
 
+import json
 import sys
 
 from .output import emit_json
@@ -11,6 +12,7 @@ def register(sub, common) -> None:
     ks = k.add_subparsers(dest="knowledge_command", required=True)
     ls = ks.add_parser("list", parents=[common], help="list rules")
     ls.add_argument("--category"); ls.add_argument("--pack")
+    ls.add_argument("--user", action="store_true", help="only rules you taught CodeFix (knowledge/project/user_rules.json)")
     ls.set_defaults(handler=run_list, sarif=False)
     sh = ks.add_parser("show", parents=[common], help="show one rule in detail")
     sh.add_argument("rule_id")
@@ -19,6 +21,25 @@ def register(sub, common) -> None:
     t = ks.add_parser("test", parents=[common], help="run every rule's bad/good/negative examples")
     t.add_argument("--rule")
     t.set_defaults(handler=run_test, sarif=False)
+    te = ks.add_parser("teach", parents=[common], help="teach a new rule from a before/after example")
+    te.add_argument("rule_id", help="UPPER_SNAKE_CASE id, e.g. USER_NO_HAS_KEY")
+    te.add_argument("--bad", help="code that should be flagged"); te.add_argument("--bad-file")
+    te.add_argument("--good", help="what it should become (omit for a report-only rule)"); te.add_argument("--good-file")
+    te.add_argument("--message", required=True, help="one-line explanation shown with each finding")
+    te.add_argument("--severity", choices=["safe", "review", "risky"], default="review")
+    te.add_argument("--confidence", type=float, default=0.9)
+    te.add_argument("--explanation", default=""); te.add_argument("--negative", action="append", default=[],
+                    help="code that must NOT be flagged (repeatable)")
+    te.add_argument("--replace", action="store_true", help="overwrite an existing user rule with this id")
+    te.add_argument("--dry-run", action="store_true", help="show the learned pattern and test it without saving")
+    te.set_defaults(handler=run_teach, sarif=False)
+    rm = ks.add_parser("remove", parents=[common], help="delete a rule you taught")
+    rm.add_argument("rule_id"); rm.set_defaults(handler=run_remove, sarif=False)
+    ex = ks.add_parser("export", parents=[common], help="export your rules (+ examples) as a shareable JSON pack")
+    ex.add_argument("-o", "--output"); ex.set_defaults(handler=run_export, sarif=False)
+    im = ks.add_parser("import", parents=[common], help="import a JSON pack of declarative rules")
+    im.add_argument("file"); im.add_argument("--replace", action="store_true")
+    im.set_defaults(handler=run_import, sarif=False)
     fb = ks.add_parser("feedback", parents=[common], help="record advisory feedback (never changes rules)")
     fb.add_argument("rule_id", nargs="?")
     fb.add_argument("--verdict", choices=["false_positive", "helpful", "wrong_fix", "other"])
@@ -33,8 +54,10 @@ def _app(args):
 
 def run_list(args) -> int:
     app = _app(args)
+    from ..knowledge.userpack import UserPack
+    mine = {r.get("id") for r in UserPack(app.config).load()} if args.user else None
     specs = [s for s in app.registry.specs() if (not args.category or s.category == args.category)
-             and (not args.pack or s.pack == args.pack)]
+             and (not args.pack or s.pack == args.pack) and (mine is None or s.id in mine)]
     if args.json:
         emit_json([s.to_dict() for s in specs], sys.stdout)
         return 0
@@ -112,3 +135,78 @@ def run_feedback(args) -> int:
         if not summary:
             sys.stdout.write("no feedback recorded\n")
     return 0
+
+
+def _read_arg(inline, file, what):
+    if file:
+        from pathlib import Path
+        return Path(file).read_text(encoding="utf-8")
+    return inline
+
+
+def run_teach(args) -> int:
+    from ..knowledge.declarative import RuleError
+    from ..knowledge.userpack import UserPack, entry_from_example
+    app = _app(args)
+    bad, good = _read_arg(args.bad, args.bad_file, "bad"), _read_arg(args.good, args.good_file, "good")
+    if not bad:
+        sys.stderr.write("give the code to flag with --bad or --bad-file\n")
+        return 2
+    try:
+        entry, examples = entry_from_example(args.rule_id, args.message, bad, good, severity=args.severity,
+                                             confidence=args.confidence, explanation=args.explanation,
+                                             negative=args.negative)
+    except RuleError as exc:
+        sys.stderr.write(f"cannot learn a rule from that example: {exc}\n")
+        return 2
+    pack = UserPack(app.config)
+    problems = pack.selftest(entry, examples) if args.dry_run else pack.save(entry, examples, replace=args.replace)
+    m = entry["match"]
+    sys.stdout.write(f"learned pattern: {m['pattern']}\n")
+    if "replace" in m:
+        sys.stdout.write(f"learned fix:     {m['replace']}\n")
+    if problems:
+        for p in problems:
+            sys.stdout.write(f"PROBLEM: {p}\n")
+        sys.stdout.write("not saved\n")
+        return 2
+    sys.stdout.write("self-test passed" + ("" if args.dry_run else f"; saved to {pack.path}") + "\n")
+    return 0
+
+
+def run_remove(args) -> int:
+    from ..knowledge.userpack import UserPack
+    ok = UserPack(_app(args).config).delete(args.rule_id)
+    sys.stdout.write("removed\n" if ok else f"no user rule named {args.rule_id}\n")
+    return 0 if ok else 2
+
+
+def run_export(args) -> int:
+    from ..knowledge.userpack import UserPack
+    data = UserPack(_app(args).config).export()
+    text = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    if args.output:
+        from pathlib import Path
+        Path(args.output).write_text(text, encoding="utf-8")
+        sys.stdout.write(f"wrote {len(data['rules'])} rule(s) to {args.output}\n")
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
+def run_import(args) -> int:
+    from pathlib import Path
+    from ..knowledge.userpack import UserPack
+    try:
+        data = json.loads(Path(args.file).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        sys.stderr.write(f"cannot read {args.file}: {exc}\n")
+        return 2
+    res = UserPack(_app(args).config).import_pack(data, replace=args.replace)
+    if args.json:
+        emit_json(res, sys.stdout)
+    else:
+        sys.stdout.write(f"imported: {', '.join(res['imported']) or 'none'}\n")
+        for rid, probs in res["rejected"].items():
+            sys.stdout.write(f"rejected {rid}: {'; '.join(probs)}\n")
+    return 2 if res["rejected"] else 0

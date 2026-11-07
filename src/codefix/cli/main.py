@@ -9,7 +9,7 @@ from typing import Any
 from .. import __version__
 from ..application import EXIT_ERROR, CodeFix
 from ..config import ConfigError, load_config
-from . import diagnostics, fix, knowledge, project, review
+from . import diagnostics, fix, knowledge, project, review, webcmd
 
 
 def common_parser() -> argparse.ArgumentParser:
@@ -27,7 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"codefix {__version__}")
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
     common = common_parser()
-    for mod in (review, fix, diagnostics, project, knowledge):
+    for mod in (review, fix, diagnostics, project, knowledge, webcmd):
         mod.register(sub, common)
     return parser
 
@@ -43,6 +43,10 @@ def make_app(args: argparse.Namespace, start: str | None = None, **kw: Any) -> C
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv and argv[0] == "web":                        # the server has its own options (--port, --root, ...)
+        from ..web.server import main as web_main
+        return web_main(argv[1:])
     parser = build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, "handler", None):

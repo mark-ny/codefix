@@ -15,7 +15,7 @@ BUILTINS = set(dir(builtins)) | {
     "__builtins__", "__debug__", "__annotations__", "WindowsError", "__class__",
     "__module__", "__qualname__", "reveal_type", "reveal_locals",
 }
-DYNAMIC_CALLS = {"exec", "eval", "globals", "locals", "vars", "__import__"}
+DYNAMIC_CALLS = {"exec", "eval", "globals", "locals", "vars"}   # can define or use names invisibly
 
 
 @dataclass

@@ -26,6 +26,8 @@ dev = ["pytest"]
 
 [project.scripts]
 codefix = "codefix.cli.main:main"
+codefix-ui = "codefix.web.server:main"
+"index.html" = "codefix.web.server:main"
 
 [project.entry-points."codefix.rules"]
 # Third-party plugins register here, see docs/plugin-development.md

@@ -67,7 +67,8 @@ def load_pack_files(config: ProjectConfig, packs: list[str] | None = None) -> li
     for d in knowledge_dirs(config):
         for pack in wanted:
             if pack == "project":
-                files = sorted((d / "project").glob("*.json")) if (d / "project").is_dir() else []
+                files = sorted(f for f in (d / "project").glob("*.json") if f.name != "examples.json") \
+                    if (d / "project").is_dir() else []
             else:
                 rel = PACK_LAYOUT.get(pack)
                 files = [d / rel] if rel and (d / rel).is_file() else []
@@ -92,8 +93,12 @@ def load_examples(config: ProjectConfig) -> dict[str, list[dict[str, Any]]]:
 
 def apply_knowledge(registry: RuleRegistry, config: ProjectConfig) -> None:
     """Merge documentation from the selected packs into the registry (never changes behaviour)."""
-    for pf in load_pack_files(config, config.packs):
+    packs = list(dict.fromkeys([*config.packs, "project"]))      # the project's own rules are always active
+    for pf in load_pack_files(config, packs):
         for raw in pf.entries:
+            if isinstance(raw, dict) and "match" in raw:
+                _register_declarative(registry, raw, pf)
+                continue
             if check_entry(raw) and any(not p.startswith("unknown field") for p in check_entry(raw)):
                 continue                                   # reported by `codefix knowledge validate`
             try:
@@ -113,3 +118,11 @@ def apply_knowledge(registry: RuleRegistry, config: ProjectConfig) -> None:
             for attr in ("frameworks", "docs", "tests"):
                 if not getattr(s, attr):
                     setattr(s, attr, getattr(spec, attr))
+
+
+def _register_declarative(registry: RuleRegistry, raw: dict, pf: PackFile) -> None:
+    from .declarative import RuleError, build_rule
+    try:
+        registry.register(build_rule(raw, pf.pack), f"declarative rule in {pf.path.name}")
+    except RuleError as exc:
+        registry.plugin_errors.append(f"{raw.get('id', '?')} ({pf.path.name}): {exc}")

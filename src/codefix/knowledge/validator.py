@@ -47,9 +47,11 @@ def validate_knowledge(registry: RuleRegistry, config: ProjectConfig) -> list[Is
                 continue
             seen[rid] = where
             json_ids.add(rid)
-            if not raw.get("bad") or not raw.get("good"):
+            if not raw.get("bad") or (not raw.get("good") and "match" not in raw):
                 issues.append(Issue("error", rid, "missing bad/good example text", where))
             rule = registry.get(rid)
+            if rule is None and "match" in raw:
+                continue                       # invalid declarative rule: reported via registry.plugin_errors
             if rule is None:
                 if raw.get("autofix") is True:
                     issues.append(Issue("error", rid, "marked autofixable but no analyzer is registered for it", where))
@@ -80,10 +82,14 @@ def validate_knowledge(registry: RuleRegistry, config: ProjectConfig) -> list[Is
                 issues.append(Issue("error", spec.id, "missing examples (add an entry to examples.json)"))
                 continue
             kinds = Counter(e.get("kind") for e in exs)
+            strict = spec.pack != "project"        # built-in rules need the full set; user rules need one working example
+            level = "error" if strict else "warning"
             if kinds["negative"] == 0:
-                issues.append(Issue("error", spec.id, "no negative example"))
-            if spec.autofix and (kinds["fix"] == 0 or not any(e.get("edge") for e in exs if e.get("kind") == "fix")):
-                issues.append(Issue("error", spec.id, "autofix rule needs a fix example and an edge-case fix example"))
+                issues.append(Issue(level, spec.id, "no negative example"))
+            if spec.autofix and kinds["fix"] == 0:
+                issues.append(Issue("error", spec.id, "autofix rule needs a fix example"))
+            elif spec.autofix and strict and not any(e.get("edge") for e in exs if e.get("kind") == "fix"):
+                issues.append(Issue("error", spec.id, "autofix rule needs an edge-case fix example"))
             if not spec.autofix and kinds["detect"] == 0:
                 issues.append(Issue("error", spec.id, "no detection example"))
     return issues

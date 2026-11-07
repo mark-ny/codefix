@@ -160,3 +160,31 @@ def test_apply_proposal_requires_approval(proj, capsys):
     (proj / "codefix.toml").write_text('[tests]\ncommand = "python -c pass"\n')
     run(capsys, "apply-proposal", "p.json", "--write", "--approve-rule", "AI_PROPOSAL")
     assert (proj / "a.py").read_text().startswith("a = 2")
+
+
+def test_teach_list_export_import_remove(proj, capsys):
+    code, out, _ = run(capsys, "knowledge", "teach", "USER_HAS_KEY", "--bad", "d.has_key(k)", "--good", "k in d",
+                       "--message", "has_key is gone", "--negative", "k in d")
+    assert code == 0 and "learned pattern: $d.has_key($k)" in out and "self-test passed" in out
+    (proj / "h.py").write_text("def f(m, key):\n    return m.has_key(key)\n")
+    code, out, _ = run(capsys, "review", "h.py")
+    assert "USER_HAS_KEY" in out and "[fixable]" in out
+    assert run(capsys, "fix", "h.py", "--write", "--yes")[0] in (0, 1)
+    assert "key in m" in (proj / "h.py").read_text()
+    code, out, _ = run(capsys, "knowledge", "list", "--user")
+    assert "USER_HAS_KEY" in out and "COMPARE_NONE" not in out
+    assert run(capsys, "knowledge", "validate")[0] == 0 and run(capsys, "knowledge", "test")[0] == 0
+    assert run(capsys, "knowledge", "export", "-o", "pack.json")[0] == 0
+    assert run(capsys, "knowledge", "remove", "USER_HAS_KEY")[0] == 0 and run(capsys, "knowledge", "remove", "USER_HAS_KEY")[0] == 2
+    code, out, _ = run(capsys, "knowledge", "import", "pack.json")
+    assert code == 0 and "USER_HAS_KEY" in out
+    assert run(capsys, "knowledge", "import", "pack.json")[0] == 2                    # duplicate refused
+    assert run(capsys, "knowledge", "import", "missing.json")[0] == 2
+
+
+def test_teach_refuses_bad_examples_and_dry_run(proj, capsys):
+    code, out, err = run(capsys, "knowledge", "teach", "USER_X", "--bad", "x = 1", "--good", "x = 1", "--message", "m")
+    assert code == 2 and "identical" in err
+    code, out, _ = run(capsys, "knowledge", "teach", "USER_X", "--bad", "eval(s)", "--message", "m", "--dry-run")
+    assert code == 0 and not (proj / "knowledge").exists()
+    assert run(capsys, "knowledge", "teach", "USER_X", "--message", "m")[0] == 2

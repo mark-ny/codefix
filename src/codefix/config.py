@@ -125,8 +125,8 @@ def load_config(start: str | Path | None = None, explicit: str | Path | None = N
     if start_p.is_file():
         start_p = start_p.parent
     path = Path(explicit) if explicit else find_config(start_p)
-    if path is None:
-        return ProjectConfig(root=start_p.resolve())
+    if path is None:                      # no config: the project root is where the user is working
+        return ProjectConfig(root=Path.cwd().resolve())
     try:
         with open(path, "rb") as fh:
             data = tomllib.load(fh)

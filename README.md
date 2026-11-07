@@ -18,6 +18,14 @@ codefix --version
 On Python 3.10 the only dependency is `tomli` (installed automatically). The wheel bundles the
 knowledge packs; to use your own, set `[knowledge] paths` or `CODEFIX_KNOWLEDGE_DIR`.
 
+**Prefer a browser?**
+
+```bash
+codefix web          # opens http://127.0.0.1:8765/ — paste code, point at files/folders, teach new rules
+```
+
+(`codefix-ui` and `index.html` are installed as aliases; see `docs/web-ui.md`.)
+
 Quick start:
 
 ```bash
@@ -51,7 +59,10 @@ processed in sorted order and the run continues after per-file errors).
 | `replace FILE FUNC --from-file F [--write]` | Replace one function, keeping decorators/indent/comments |
 | `stub FILE FUNC [--write]` | Replace a body with `raise NotImplementedError` (docstring kept) or add a new stub |
 | `apply-proposal FILE.json [--write ...]` | Run an AI/human structured patch proposal through the same gate |
-| `knowledge list\|show ID\|validate\|test\|feedback` | Inspect, validate and test the rule knowledge base |
+| `web [--port N] [--root DIR] [--no-browser]` | Local browser interface (paste code, files/folders, teach rules) |
+| `knowledge list [--user]\|show ID\|validate\|test\|feedback` | Inspect, validate and test the rule knowledge base |
+| `knowledge teach ID --bad C [--good C] --message M` | **Teach a new rule from an example** (no Python needed) |
+| `knowledge remove ID\|export [-o F]\|import F` | Manage and share the rules you taught |
 | `project init\|info` | Write a starter `codefix.toml` / show effective config |
 
 **Exit codes:** `0` clean/success · `1` findings or pending changes · `2` errors (unreadable or
@@ -94,6 +105,10 @@ Maintainability: `EXCESSIVE_NESTING`, `FUNCTION_TOO_LONG`, `HIGH_COMPLEXITY`, `T
 Style: `MISSING_DOCSTRING`. (✎ = has an autofix.) Details: `codefix knowledge show ID` or `docs/rules.md`.
 Suppress one line with `# codefix: ignore` or `# codefix: ignore[RULE_ID,...]`.
 
+**Expanding the knowledge:** teach rules by example, by form, or as JSON (`codefix knowledge teach`, or the
+*Teach CodeFix* tab); they are stored as data in `knowledge/project/`, active immediately, self-tested before saving,
+and shareable. See `docs/expanding-knowledge.md`.
+
 **No security rules ship.** `rules/security.py` and `knowledge/security/` are clean extension points.
 
 ## Safety guarantees
@@ -131,6 +146,8 @@ both report this explicitly. Name collisions and ambiguous scopes are refused.
 * Removing imports can leave blank lines at the top of a file (run a formatter). The formatter reformats the whole file when used with `fix`.
 * `MUTABLE_DEFAULT` keeps type annotations unchanged (consider `list | None`).
 * Backups are never pruned automatically.
+* Taught rules are token-based (not type-aware) and single-file; Python plugins are needed for scope/type logic.
+* The web page is tested with pytest (service + HTTP) and a jsdom smoke test (`tools/ui_smoke_test.js`, needs Node); it has not been tried in every real browser.
 * Developed and tested on Linux with Python 3.12 only. Python 3.10/3.11 and Windows are supported in code (guarded syntax, `tomli` fallback, no POSIX-only calls without guards) but **not tested**.
 * SARIF output is basic (rules, results, locations; no fixes/code flows).
 
@@ -138,10 +155,10 @@ both report this explicitly. Name collisions and ambiguous scopes are refused.
 
 ```bash
 pip install -e ".[all]"
-python -m pytest                      # 248 tests
+python -m pytest                      # full suite (see `pytest --co -q | tail -1`)
 python tools/validate_knowledge.py    # knowledge packs + executable examples
 python tools/generate_rule_report.py  # docs/rules.md
 ```
 
-Documentation: `docs/architecture.md`, `docs/configuration.md`, `docs/rule-authoring.md`,
+Documentation: `docs/web-ui.md`, `docs/expanding-knowledge.md`, `docs/architecture.md`, `docs/configuration.md`, `docs/rule-authoring.md`,
 `docs/plugin-development.md`, `docs/migration.md`.

@@ -134,3 +134,11 @@ def test_symlinked_file_keeps_link(tmp_path):
     from conftest import opts
     app.fix([link], opts(command="autofix", yes=False))
     assert link.is_symlink() and "a is None" in real.read_text()
+
+
+def test_dunder_import_does_not_make_unused_import_report_only():
+    code = "import os\nv = __import__('json').dumps(1)\n"
+    f = next(f for f in analyze(code) if f.rule_id == "UNUSED_IMPORT")
+    assert f.confidence >= 0.8 and f.fixable                  # __import__ cannot use names invisibly
+    dyn = next(f for f in analyze("import os\nexec('os.getcwd()')\n") if f.rule_id == "UNUSED_IMPORT")
+    assert dyn.confidence < 0.8                               # exec genuinely can

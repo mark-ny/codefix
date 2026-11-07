@@ -6,7 +6,7 @@ from typing import Any
 from ..models import RuleSpec, Severity
 
 REQUIRED_FIELDS = ("id", "category", "severity", "confidence", "autofix", "requires_tests", "message", "bad", "good")
-OPTIONAL_FIELDS = ("description", "explanation", "false_positive", "frameworks", "docs", "tests", "implemented")
+OPTIONAL_FIELDS = ("description", "explanation", "false_positive", "frameworks", "docs", "tests", "implemented", "match")
 VALID_SEVERITIES = tuple(s.value for s in Severity)
 COMPARED_FIELDS = ("category", "severity", "confidence", "autofix", "requires_tests")
 
