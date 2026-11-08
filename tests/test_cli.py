@@ -188,3 +188,67 @@ def test_teach_refuses_bad_examples_and_dry_run(proj, capsys):
     code, out, _ = run(capsys, "knowledge", "teach", "USER_X", "--bad", "eval(s)", "--message", "m", "--dry-run")
     assert code == 0 and not (proj / "knowledge").exists()
     assert run(capsys, "knowledge", "teach", "USER_X", "--message", "m")[0] == 2
+
+
+SKILL_FILE = {"format": "codefix-skill", "name": "team-habits", "title": "Team habits", "rules": [
+    {"id": "TEAM_NO_PRINT", "message": "use logging", "bad": "print(x)", "good": "logger.info(x)",
+     "match": {"type": "pattern", "pattern": "print($x)", "replace": "logger.info($x)"}},
+    {"id": "TEAM_NO_EVAL", "message": "eval banned", "severity": "risky", "bad": "eval(s)", "match": {"type": "call", "name": "eval"}}]}
+
+
+def test_skill_commands_end_to_end(proj, capsys):
+    (proj / "team.json").write_text(json.dumps(SKILL_FILE))
+    (proj / "t.py").write_text("def f(s):\n    print(s)\n    return eval(s)\n")
+    code, out, _ = run(capsys, "skill", "validate", "team.json")
+    assert code == 0 and "2 rule(s); valid" in out and not (proj / "knowledge").exists()
+    code, out, _ = run(capsys, "skill", "try", "team.json", "--code-file", "t.py")
+    assert code == 0 and "TEAM_NO_PRINT" in out and "+    logger.info(s)" in out
+    code, out, _ = run(capsys, "skill", "learn", "team.json", "--json")
+    assert code == 0 and json.loads(out)["learned"] is True
+    code, out, _ = run(capsys, "skill", "learn", "team.json")
+    assert code == 2 and "already exists" in out
+    assert run(capsys, "skill", "learn", "team.json", "--replace")[0] == 0
+    code, out, _ = run(capsys, "skill", "list")
+    assert "team-habits" in out and "2 rule(s)" in out
+    code, out, _ = run(capsys, "review", "t.py")
+    assert "TEAM_NO_PRINT" in out and "TEAM_NO_EVAL" in out
+    assert run(capsys, "skill", "show", "team-habits")[0] == 0 and run(capsys, "skill", "show", "ghost")[0] == 2
+    assert run(capsys, "skill", "disable", "team-habits")[0] == 0
+    assert "TEAM" not in run(capsys, "review", "t.py")[1]
+    assert run(capsys, "skill", "enable", "team-habits")[0] == 0
+    assert run(capsys, "skill", "export", "team-habits", "-o", "out.json")[0] == 0 and json.loads((proj / "out.json").read_text())["name"] == "team-habits"
+    assert run(capsys, "skill", "remove-rule", "team-habits", "TEAM_NO_EVAL")[0] == 0
+    assert run(capsys, "knowledge", "validate")[0] == 0 and run(capsys, "knowledge", "test")[0] == 0
+    assert run(capsys, "skill", "forget", "team-habits")[0] == 0 and run(capsys, "skill", "forget", "team-habits")[0] == 2
+
+
+def test_skill_invalid_files_exit_nonzero_with_reasons(proj, capsys):
+    bad = {"name": "bad-skill", "rules": [{"id": "COMPARE_NONE", "message": "m", "bad": "a", "match": {"type": "call", "name": "a"}}]}
+    (proj / "bad.json").write_text(json.dumps(bad))
+    code, out, _ = run(capsys, "skill", "validate", "bad.json", "--json")
+    d = json.loads(out)
+    assert code == 2 and d["ok"] is False and "already used" in d["rules"]["COMPARE_NONE"][0]
+    assert run(capsys, "skill", "learn", "bad.json")[0] == 2 and not (proj / "knowledge").exists()
+    (proj / "junk.json").write_text("{")
+    assert run(capsys, "skill", "validate", "junk.json")[0] == 2 and run(capsys, "skill", "validate", "nope.json")[0] == 2
+    assert run(capsys, "skill", "new", "my-skill", "--title", "T")[0] == 0 and run(capsys, "skill", "new", "my-skill")[0] == 2
+
+
+def test_policy_commands(proj, capsys):
+    (proj / "t.py").write_text("import os\nif a == None:\n    pass\n")
+    assert run(capsys, "policy", "set", "COMPARE_NONE", "--mode", "report_only")[0] == 0
+    assert run(capsys, "policy", "set", "NOPE", "--mode", "disabled")[0] == 2
+    run(capsys, "policy", "set", "UNUSED_IMPORT", "--severity", "safe", "--exclude", "skip/*")
+    code, out, _ = run(capsys, "policy", "show", "--changed")
+    assert "COMPARE_NONE" in out and "report_only" in out and "UNUSED_IMPORT" in out and "AUTO".lower() in out.lower()
+    run(capsys, "autofix", "t.py", "--write")
+    text = (proj / "t.py").read_text()
+    assert "a == None" in text and "import os" not in text                        # report-only kept, promoted rule applied
+    assert run(capsys, "policy", "behavior", "--allow-risky", "true", "--min-confidence", "0.9")[0] == 0
+    code, out, _ = run(capsys, "policy", "show", "--json")
+    assert any(r["id"] == "COMPARE_NONE" and r["mode"] == "report_only" for r in json.loads(out))
+    assert run(capsys, "policy", "reset")[0] == 2
+    assert run(capsys, "policy", "reset", "COMPARE_NONE")[0] == 0 and run(capsys, "policy", "reset", "--all")[0] == 0
+    assert json.loads((proj / "codefix.policy.json").read_text())["rules"] == {}
+    (proj / "codefix.policy.json").write_text("{bad")
+    assert run(capsys, "review", "t.py")[0] == 2                                  # a corrupt policy file is a clear config error

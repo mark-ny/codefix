@@ -1,0 +1,33 @@
+{
+  "format": "codefix-skill",
+  "name": "python2-leftovers",
+  "title": "Python 2 leftovers",
+  "description": "Finds and fixes idioms that only worked in Python 2.",
+  "author": "example",
+  "rules": [
+    {
+      "id": "PY2_HAS_KEY",
+      "message": "dict.has_key() was removed in Python 3; use `in`",
+      "severity": "review",
+      "bad": "if d.has_key(k):\n    pass\n",
+      "good": "if k in d:\n    pass\n",
+      "match": {"type": "pattern", "pattern": "$d.has_key($k)", "replace": "$k in $d"}
+    },
+    {
+      "id": "PY2_ITERITEMS",
+      "message": "iteritems() was removed in Python 3; use items()",
+      "severity": "safe",
+      "bad": "for k, v in d.iteritems():\n    pass\n",
+      "good": "for k, v in d.items():\n    pass\n",
+      "match": {"type": "pattern", "pattern": "$d.iteritems()", "replace": "$d.items()"}
+    },
+    {
+      "id": "PY2_XRANGE",
+      "message": "xrange() does not exist in Python 3; use range()",
+      "severity": "review",
+      "bad": "for i in xrange(10):\n    pass\n",
+      "good": "for i in range(10):\n    pass\n",
+      "match": {"type": "call", "name": "xrange", "replace_with": "range"}
+    }
+  ]
+}

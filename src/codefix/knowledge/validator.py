@@ -82,7 +82,7 @@ def validate_knowledge(registry: RuleRegistry, config: ProjectConfig) -> list[Is
                 issues.append(Issue("error", spec.id, "missing examples (add an entry to examples.json)"))
                 continue
             kinds = Counter(e.get("kind") for e in exs)
-            strict = spec.pack != "project"        # built-in rules need the full set; user rules need one working example
+            strict = not spec.pack.startswith(("project", "skill:"))   # built-in rules need the full set; taught rules one working example
             level = "error" if strict else "warning"
             if kinds["negative"] == 0:
                 issues.append(Issue(level, spec.id, "no negative example"))
@@ -111,7 +111,7 @@ def _only(registry: RuleRegistry, rule_id: str) -> RuleRegistry:
 
 def run_example(registry: RuleRegistry, config: ProjectConfig, rule_id: str, ex: dict) -> ExampleResult:
     name, kind = ex.get("name", "?"), ex.get("kind")
-    cfg = dataclasses.replace(config, disabled_rules=[], blocked_rules=[], **ex.get("config", {}))
+    cfg = dataclasses.replace(config, disabled_rules=[], blocked_rules=[], rule_overrides={}, **ex.get("config", {}))   # examples ignore local policy
     engine = AnalysisEngine(_only(registry, rule_id), cfg)
     code = ex.get("bad") if kind == "fix" else ex.get("code", "")
     src = SourceFile.from_bytes(code.encode("utf-8"), Path("example.py"))

@@ -9,7 +9,7 @@ from typing import Any
 from .. import __version__
 from ..application import EXIT_ERROR, CodeFix
 from ..config import ConfigError, load_config
-from . import diagnostics, fix, knowledge, project, review, webcmd
+from . import diagnostics, fix, knowledge, project, review, skills, webcmd
 
 
 def common_parser() -> argparse.ArgumentParser:
@@ -27,7 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"codefix {__version__}")
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
     common = common_parser()
-    for mod in (review, fix, diagnostics, project, knowledge, webcmd):
+    for mod in (review, fix, diagnostics, project, knowledge, skills, webcmd):
         mod.register(sub, common)
     return parser
 

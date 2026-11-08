@@ -257,6 +257,8 @@ class ProjectConfig:
     security_minimum_confidence: float = 0.95
     security_allow_autofix: bool = False
     plugin_modules: list[str] = field(default_factory=list)
+    rule_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)   # from codefix.policy.json
+    skills_disabled: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:

@@ -63,6 +63,8 @@ processed in sorted order and the run continues after per-file errors).
 | `knowledge list [--user]\|show ID\|validate\|test\|feedback` | Inspect, validate and test the rule knowledge base |
 | `knowledge teach ID --bad C [--good C] --message M` | **Teach a new rule from an example** (no Python needed) |
 | `knowledge remove ID\|export [-o F]\|import F` | Manage and share the rules you taught |
+| `skill list\|show\|new\|validate F\|try F --code-file X\|learn F\|enable\|disable\|forget\|remove-rule\|export` | Skills: named, shareable knowledge packs (all-or-nothing install) |
+| `policy show\|set RULE ...\|behavior\|reset` | Edit what CodeFix fixes, only reports, ignores, or skips per path |
 | `project init\|info` | Write a starter `codefix.toml` / show effective config |
 
 **Exit codes:** `0` clean/success · `1` findings or pending changes · `2` errors (unreadable or
@@ -104,6 +106,12 @@ Maintainability: `EXCESSIVE_NESTING`, `FUNCTION_TOO_LONG`, `HIGH_COMPLEXITY`, `T
 `TOO_MANY_RETURNS`, `TOO_MANY_CALLS`, `DUPLICATE_CODE`. Performance: `STRING_CONCAT_LOOP`.
 Style: `MISSING_DOCSTRING`. (✎ = has an autofix.) Details: `codefix knowledge show ID` or `docs/rules.md`.
 Suppress one line with `# codefix: ignore` or `# codefix: ignore[RULE_ID,...]`.
+
+**Skills (knowledge packs) and policy:** group rules into named *skills* (`knowledge/skills/*.json`), hand CodeFix a
+skill file to learn (`codefix skill validate|try|learn`), enable/disable/edit them, and decide per rule what to fix,
+only report or ignore (`codefix policy ...`, saved in `codefix.policy.json`). **Your AI agent can do all of this by
+following `AGENT_README.md`** (format, workflow, error decoder, guardrails; schema in `knowledge/skill.schema.json`,
+examples in `docs/examples/skills/`).
 
 **Expanding the knowledge:** teach rules by example, by form, or as JSON (`codefix knowledge teach`, or the
 *Teach CodeFix* tab); they are stored as data in `knowledge/project/`, active immediately, self-tested before saving,
@@ -160,5 +168,5 @@ python tools/validate_knowledge.py    # knowledge packs + executable examples
 python tools/generate_rule_report.py  # docs/rules.md
 ```
 
-Documentation: `docs/web-ui.md`, `docs/expanding-knowledge.md`, `docs/architecture.md`, `docs/configuration.md`, `docs/rule-authoring.md`,
+Documentation: **`AGENT_README.md`** (for your AI agent), `docs/web-ui.md`, `docs/expanding-knowledge.md`, `docs/architecture.md`, `docs/configuration.md`, `docs/rule-authoring.md`,
 `docs/plugin-development.md`, `docs/migration.md`.

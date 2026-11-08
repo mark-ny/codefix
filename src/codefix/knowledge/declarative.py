@@ -370,6 +370,26 @@ def has_replacement(match: dict[str, Any]) -> bool:
     return bool(match.get("replace") is not None if match.get("type") == "pattern" else match.get("replace_with"))
 
 
+def normalize_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    """Fill sensible defaults so a minimal rule ({id, message, bad, match}) is enough."""
+    if not isinstance(entry, dict):
+        raise RuleError("a rule must be a JSON object")
+    e = dict(entry)
+    e.setdefault("category", "project")
+    e.setdefault("severity", "review")
+    e.setdefault("confidence", 0.9)
+    e.setdefault("requires_tests", False)
+    e.setdefault("good", "")
+    match = e.get("match")
+    if isinstance(match, dict) and match.get("type") in MATCH_TYPES and "autofix" not in e:
+        e["autofix"] = has_replacement(match)
+    if isinstance(e.get("bad"), str) and e["bad"] and not e["bad"].endswith("\n"):
+        e["bad"] += "\n"
+    if isinstance(e.get("good"), str) and e["good"] and not e["good"].endswith("\n"):
+        e["good"] += "\n"
+    return e
+
+
 def build_rule(entry: dict[str, Any], pack: str = "project") -> DeclarativeRule:
     """Validate a knowledge entry that has a ``match`` and turn it into a runnable rule."""
     problems = [p for p in check_entry(entry) if not p.startswith("unknown field")]

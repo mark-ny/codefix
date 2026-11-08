@@ -256,3 +256,97 @@ def test_codefix_web_subcommand_routes_to_server(tmp_path, capsys):
     from codefix.cli.main import main
     assert main(["web", "--root", str(tmp_path / "missing")]) == 2
     assert "not a folder" in capsys.readouterr().err
+
+
+def test_syntax_errors_come_with_context_and_hints(svc):
+    code = "class A:\n    def f(self):\n        try:\n            x = 1\n        except Exception:\n            pass\n    else:\n        pass\n"
+    for r in (svc.analyze_text(code), svc.fix_text(code)):
+        sx = r["syntax"]
+        assert sx["line"] == 7 and [c["n"] for c in sx["context"]][-1] == 8
+        assert [c["n"] for c in sx["context"] if c["current"]] == [7]
+        assert any("line up" in h for h in sx["hints"])
+    assert svc.analyze_text("x = 1\n")["syntax"] is None
+
+
+def test_syntax_hints_for_pasted_text_problems(svc):
+    sx = svc.analyze_text("x = \u201chello\u201d\n")["syntax"]
+    assert any("curly quote" in h for h in sx["hints"])
+    sx = svc.analyze_text("foo(1, 2\nbar = 3\n")["syntax"]
+    assert "never closed" in sx["message"] and any("missing closing bracket" in h for h in sx["hints"])
+    sx = svc.analyze_text("if x:\n\ty = 1\n    z = 2\n")["syntax"]
+    assert any("mixes tab" in h for h in sx["hints"])
+
+
+# ------------------------------------------------------ skills / policy / layout (web)
+SK = {"format": "codefix-skill", "name": "team-habits", "title": "T", "rules": [
+    {"id": "TEAM_NO_EVAL", "message": "no eval", "bad": "eval(s)", "match": {"type": "call", "name": "eval"}},
+    {"id": "TEAM_PRINT", "message": "logging", "bad": "print(x)", "good": "logger.info(x)",
+     "match": {"type": "pattern", "pattern": "print($x)", "replace": "logger.info($x)"}}]}
+
+
+def test_web_skill_lifecycle(svc):
+    assert svc.skill_validate(SK)["ok"] and svc.skills_list()["skills"] == []
+    assert svc.skill_learn(SK)["learned"]
+    assert not svc.skill_learn(SK)["learned"] and svc.skill_learn(SK, True)["learned"]
+    s = svc.skills_list()["skills"][0]
+    assert s["name"] == "team-habits" and s["enabled"] and len(s["rules"]) == 2
+    assert any(f["rule_id"] == "TEAM_NO_EVAL" for f in svc.analyze_text("eval(s)\n")["findings"])
+    assert svc.skill_try(SK, "print(1)\n")["fixed"] == "logger.info(1)\n"
+    assert svc.skill_enable("team-habits", False)["ok"]
+    assert not any(f["rule_id"] == "TEAM_NO_EVAL" for f in svc.analyze_text("eval(s)\n")["findings"])
+    assert svc.skill_enable("team-habits", True)["ok"]
+    assert svc.skill_export("team-habits")["name"] == "team-habits"
+    with pytest.raises(WebError):
+        svc.skill_export("ghost")
+    assert svc.skill_rule_delete("team-habits", "TEAM_NO_EVAL")["ok"] and svc.skill_delete("team-habits")["ok"]
+
+
+def test_web_rule_saved_into_chosen_skill_and_editable(svc):
+    assert svc.skill_create("mine", "Mine")["ok"] and not svc.skill_create("mine")["ok"]
+    form = {"skill": "mine", "id": "MINE_EVAL", "message": "no eval", "bad": "eval(s)", "match": {"type": "call", "name": "eval"}}
+    assert svc.kb_save(form)["ok"]
+    assert [r["skill"] for r in svc.kb_list()["rules"] if r["id"] == "MINE_EVAL"] == ["mine"]
+    assert not svc.kb_save(form)["ok"]                                                      # exists
+    assert svc.kb_save({**form, "message": "no eval, ever", "replace": True})["ok"]
+    assert [r["message"] for r in svc.skills_list()["skills"][0]["rules"]] == ["no eval, ever"]
+    assert not svc.kb_save({**form, "skill": "ghost"})["ok"]
+
+
+def test_web_policy_roundtrip(svc, tmp_path):
+    p = svc.policy_get()
+    assert {r["id"]: r["effective"] for r in p["rules"]}["COMPARE_NONE"] == "auto"
+    saved = svc.policy_save({"COMPARE_NONE": {"mode": "report_only"}, "UNUSED_IMPORT": {"severity": "safe", "exclude": ["tests/*"]}},
+                            {"allow_risky": True, "minimum_confidence": 0.9})
+    rows = {r["id"]: r for r in saved["rules"]}
+    assert rows["COMPARE_NONE"]["effective"] == "report_only" and rows["UNUSED_IMPORT"]["effective"] == "auto"
+    assert saved["behavior"] == {"allow_risky": True, "minimum_confidence": 0.9}
+    f = svc.analyze_text("import os\nif a == None:\n    pass\n")["findings"]
+    assert {x["rule_id"]: x["action"] for x in f}["COMPARE_NONE"] == "report_only"
+    assert svc.fix_text("if a == None:\n    pass\n")["changed"] is False                    # never fixed any more
+    with pytest.raises(WebError, match="unknown rule"):
+        svc.policy_save({"NOPE": {"mode": "disabled"}}, None)
+    with pytest.raises(WebError):
+        svc.policy_save({"COMPARE_NONE": {"mode": "weird"}}, None)
+    with pytest.raises(WebError):
+        svc.policy_save("x", None)
+    assert svc.policy_reset(None)["rules"][0]["customised"] is False
+    assert svc.fix_text("if a == None:\n    pass\n")["changed"] is True
+    assert (tmp_path / "codefix.policy.json").exists()
+
+
+def test_http_skill_and_policy_endpoints(server, tmp_path):
+    s, body, _ = http(server, "/api/skills/learn", {"data": SK})
+    assert s == 200 and json.loads(body)["learned"]
+    s, body, _ = http(server, "/api/skills")
+    assert json.loads(body)["skills"][0]["name"] == "team-habits"
+    s, body, _ = http(server, "/api/policy/save", {"rules": {"COMPARE_NONE": {"mode": "disabled"}}, "behavior": {}})
+    assert s == 200 and (tmp_path / "codefix.policy.json").exists()
+    s, body, _ = http(server, "/api/policy/save", {"rules": {"COMPARE_NONE": {"mode": "bad"}}})
+    assert s == 400
+    assert http(server, "/api/skills/learn", {"data": SK}, token=False)[0] == 403
+
+
+def test_page_layout_has_separate_output_and_all_tabs(server):
+    _, body, _ = http(server, "/", token=False)
+    for needle in ('id="out-code"', "readonly", 'data-tab="policy"', 'id="sk-json"', 'id="p-table"', "Skills &amp; knowledge"):
+        assert needle in body, needle

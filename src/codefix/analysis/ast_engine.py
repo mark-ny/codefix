@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ast
+import fnmatch
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -161,6 +162,17 @@ class AnalysisEngine:
                 if f.rule_id in blocked:
                     f.severity = Severity.BLOCKED
                 adjust(f, ctx)
+                ov = self.config.rule_overrides.get(f.rule_id)
+                if ov:
+                    if ov.get("severity") and f.category != "security":
+                        f.severity = Severity(ov["severity"])
+                    if ov.get("mode") == "blocked":
+                        f.severity = Severity.BLOCKED
+                    elif ov.get("mode") == "report_only":
+                        f.edits, f.fixable = [], False
+                    if ov.get("exclude") and self._excluded(path, ov["exclude"]):
+                        result.suppressed += 1
+                        continue
                 if self._suppressed(ctx, f):
                     result.suppressed += 1
                     continue
@@ -168,6 +180,15 @@ class AnalysisEngine:
         result.findings.sort(key=lambda f: (f.line, f.column, f.rule_id))
         result.metrics = ctx.metrics
         return result
+
+    def _excluded(self, path: str, patterns: list[str]) -> bool:
+        p = Path(path)
+        try:
+            rel = p.resolve().relative_to(self.config.root.resolve()).as_posix()
+        except (ValueError, OSError):
+            rel = p.as_posix()
+        return any(fnmatch.fnmatch(rel, pat) or fnmatch.fnmatch(p.name, pat) or fnmatch.fnmatch("/" + rel, pat)
+                   for pat in patterns)
 
     @staticmethod
     def _suppressed(ctx: AnalysisContext, f: Finding) -> bool:

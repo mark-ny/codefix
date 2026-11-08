@@ -159,6 +159,18 @@ class Handler(BaseHTTPRequestHandler):
                 ("POST", "/api/kb/delete"): lambda: self._locked(lambda: svc.kb_delete(b.get("id", ""))),
                 ("GET", "/api/kb/export"): lambda: svc.kb_export(),
                 ("POST", "/api/kb/import"): lambda: self._locked(lambda: svc.kb_import(b.get("data"), bool(b.get("replace")))),
+                ("GET", "/api/skills"): lambda: svc.skills_list(),
+                ("POST", "/api/skills/create"): lambda: self._locked(lambda: svc.skill_create(b.get("name", ""), b.get("title", ""), b.get("description", ""))),
+                ("POST", "/api/skills/validate"): lambda: svc.skill_validate(b.get("data")),
+                ("POST", "/api/skills/learn"): lambda: self._locked(lambda: svc.skill_learn(b.get("data"), bool(b.get("replace")))),
+                ("POST", "/api/skills/enable"): lambda: self._locked(lambda: svc.skill_enable(b.get("name", ""), bool(b.get("enabled")))),
+                ("POST", "/api/skills/delete"): lambda: self._locked(lambda: svc.skill_delete(b.get("name", ""))),
+                ("POST", "/api/skills/export"): lambda: svc.skill_export(b.get("name", "")),
+                ("POST", "/api/skills/try"): lambda: svc.skill_try(b.get("data"), b.get("code", "")),
+                ("POST", "/api/skills/rule_delete"): lambda: self._locked(lambda: svc.skill_rule_delete(b.get("skill", ""), b.get("id", ""))),
+                ("GET", "/api/policy"): lambda: svc.policy_get(),
+                ("POST", "/api/policy/save"): lambda: self._locked(lambda: svc.policy_save(b.get("rules"), b.get("behavior"))),
+                ("POST", "/api/policy/reset"): lambda: self._locked(lambda: svc.policy_reset(b.get("id"))),
                 ("POST", "/api/feedback"): lambda: svc.feedback(b.get("rule_id", ""), b.get("verdict", ""), b.get("note", "")),
             }
             fn = routes.get((method, path))

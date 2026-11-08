@@ -46,6 +46,26 @@ def examples_for(entry: dict[str, Any], negatives: list[str]) -> list[dict[str, 
     return examples
 
 
+def selftest_entry(entry: dict[str, Any], examples: list[dict[str, Any]], config: ProjectConfig,
+                   pack: str = "project") -> list[str]:
+    """Build one declarative rule in isolation and run its examples. Returns problems (empty = ok)."""
+    from .validator import run_example
+    try:
+        rule = build_rule(entry, pack)
+    except RuleError as exc:
+        return [str(exc)]
+    if not any(e.get("kind") in ("fix", "detect") for e in examples):
+        return ["at least one example that triggers the rule is required"]
+    reg = RuleRegistry()
+    reg.register(rule)
+    problems = []
+    for ex in examples:
+        r = run_example(reg, config, entry["id"], ex)
+        if not r.ok:
+            problems.append(f"example '{ex.get('name')}': {r.message}")
+    return problems
+
+
 class UserPack:
     def __init__(self, config: ProjectConfig):
         self.config = config
@@ -75,22 +95,7 @@ class UserPack:
 
     # ---- operations
     def selftest(self, entry: dict[str, Any], examples: list[dict[str, Any]]) -> list[str]:
-        """Build the rule in isolation and run its examples. Returns problems (empty = ok)."""
-        from .validator import run_example
-        try:
-            rule = build_rule(entry)
-        except RuleError as exc:
-            return [str(exc)]
-        if not any(e.get("kind") in ("fix", "detect") for e in examples):
-            return ["at least one example that triggers the rule is required"]
-        reg = RuleRegistry()
-        reg.register(rule)
-        problems = []
-        for ex in examples:
-            r = run_example(reg, self.config, entry["id"], ex)
-            if not r.ok:
-                problems.append(f"example '{ex.get('name')}': {r.message}")
-        return problems
+        return selftest_entry(entry, examples, self.config)
 
     def save(self, entry: dict[str, Any], examples: list[dict[str, Any]], *, replace: bool = False) -> list[str]:
         """Validate, self-test and persist. Returns problems; nothing is written if any."""

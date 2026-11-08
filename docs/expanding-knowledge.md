@@ -67,7 +67,32 @@ codefix knowledge feedback USER_NO_PRINT --verdict false_positive   # advisory l
 Commit `knowledge/project/` to your repository so the whole team shares the rules. Feedback never changes a rule
 by itself; edit or remove the rule deliberately.
 
-## 4. When you need real logic
+## 4. Skills: named bundles you can hand to CodeFix
+
+A **skill** is a JSON file `knowledge/skills/<name>.json` bundling several rules (and optionally their examples).
+Make one in the page (*Skills & knowledge* → Create a new skill → pick it in *Add it to skill* when saving rules), with
+`codefix skill new NAME`, or **give CodeFix a finished file to learn**:
+
+```bash
+codefix skill validate team.json     # dry run, per-rule report, nothing installed
+codefix skill try team.json --code-file src/app.py   # what would it flag/change?
+codefix skill learn team.json        # install; all-or-nothing; active immediately
+codefix skill list | show NAME | disable NAME | enable NAME | forget NAME | export NAME -o team.json
+```
+
+Rule ids must be unique across built-ins, plugins, your rules and every skill. A skill that fails any check is not
+installed at all. Disabled skills keep their file but their rules do not run. Edit a rule in the page (*edit* next to
+it), or edit the JSON and `learn --replace`. The full format, an error decoder and guardrails for AI agents are in
+`AGENT_README.md`; the schema is `knowledge/skill.schema.json`; examples are in `docs/examples/skills/`.
+
+## 5. Deciding what to fix and what to leave alone
+
+Rules you taught, built-in rules and skills all obey the same policy, edited in the page (*Rules & policy*) or with
+`codefix policy`: per rule *enabled / report_only / disabled / blocked*, an optional fix-severity override
+(*safe / review / risky*), and path exclusions such as `tests/*`. Stored in `codefix.policy.json` (your hand-written
+`codefix.toml` is never rewritten). Security rules can never be promoted to `safe`.
+
+## 6. When you need real logic
 
 Rules that need scope or type information, or custom fixes, are Python plugins (`docs/plugin-development.md`,
 `docs/rule-authoring.md`). Documentation-only entries in the framework packs show where such rules would go.

@@ -82,7 +82,7 @@ class RuleRegistry:
         return [merged[k] for k in sorted(merged)]
 
     def enabled(self, config: ProjectConfig) -> list[Rule]:
-        off = set(config.disabled_rules)
+        off = set(config.disabled_rules) | {rid for rid, ov in config.rule_overrides.items() if ov.get("mode") == "disabled"}
         return [r for r in self.rules() if r.spec.id not in off]
 
     def has_fixer(self, rule_id: str) -> bool:

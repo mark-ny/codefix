@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "codefix-skill.schema.json",
+  "title": "CodeFix skill",
+  "description": "A named bundle of declarative CodeFix rules. `codefix skill validate FILE` is the authoritative check; this schema covers the shape.",
+  "type": "object",
+  "required": ["name", "rules"],
+  "additionalProperties": false,
+  "properties": {
+    "format": {"const": "codefix-skill"},
+    "version": {"type": "integer", "const": 1},
+    "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,39}$"},
+    "title": {"type": "string"},
+    "description": {"type": "string"},
+    "author": {"type": "string"},
+    "rules": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/rule"}},
+    "examples": {"type": "object", "additionalProperties": {"type": "array", "items": {"$ref": "#/$defs/example"}}}
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "required": ["id", "message", "bad", "match"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,63}$"},
+        "message": {"type": "string", "minLength": 1},
+        "bad": {"type": "string", "minLength": 1, "description": "Valid Python that the rule must flag."},
+        "good": {"type": "string", "description": "What `bad` becomes after the fix. Required when the match has a replacement; empty otherwise."},
+        "severity": {"enum": ["safe", "review", "risky"], "default": "review"},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.9},
+        "category": {"type": "string", "default": "project"},
+        "requires_tests": {"type": "boolean", "default": false},
+        "autofix": {"type": "boolean", "description": "Optional; must equal whether `match` defines a replacement."},
+        "explanation": {"type": "string"},
+        "false_positive": {"type": "string"},
+        "docs": {"type": "array", "items": {"type": "string"}},
+        "match": {"oneOf": [
+          {"type": "object", "required": ["type", "pattern"], "additionalProperties": false,
+           "properties": {"type": {"const": "pattern"}, "pattern": {"type": "string", "maxLength": 500}, "replace": {"type": "string"}}},
+          {"type": "object", "required": ["type"], "additionalProperties": false, "anyOf": [{"required": ["name"]}, {"required": ["names"]}],
+           "properties": {"type": {"const": "call"}, "name": {"type": "string"}, "names": {"type": "array", "items": {"type": "string"}, "minItems": 1}, "replace_with": {"type": "string"}}},
+          {"type": "object", "required": ["type", "module"], "additionalProperties": false,
+           "properties": {"type": {"const": "import"}, "module": {"type": "string"}, "replace_with": {"type": "string"}}},
+          {"type": "object", "required": ["type", "pattern"], "additionalProperties": false,
+           "properties": {"type": {"const": "regex"}, "pattern": {"type": "string", "maxLength": 300}, "flags": {"type": "string", "pattern": "^[im]*$"}, "code_only": {"type": "boolean", "default": true}}}
+        ]}
+      }
+    },
+    "example": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "name": {"type": "string"},
+        "kind": {"enum": ["fix", "detect", "negative"]},
+        "bad": {"type": "string"}, "good": {"type": "string"}, "code": {"type": "string"},
+        "edge": {"type": "boolean"}
+      }
+    }
+  }
+}

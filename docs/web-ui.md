@@ -15,12 +15,18 @@ page may read/modify; default = the directory you launched from), `--config FILE
 
 ## Tabs
 
-* **Paste code** – paste, **Analyze**, tick the fixes you want, **Fix selected + safe**. Safe fixes can be applied
-  automatically (checkbox); review-level and risky fixes only when ticked. The result replaces the text box,
-  **Undo** steps back, a diff and the verification summary are shown. Pasted code never touches disk.
+* **Paste code** – three numbered steps: **1 · Your code** (never modified), **2 · Fixed code** (its own box with
+  tabs *Fixed code / What changed / Report*, plus Copy, Download and *Use as input* to keep fixing), **3 · Findings**
+  (tick what you want fixed). Safe fixes can be applied automatically (checkbox); review-level and risky fixes only
+  when ticked. Pasted code never touches disk.
 * **Files & folders** – enter a path (or Browse) → **Review** → choose which rules to fix → **Preview** (dry run) or
   **Apply** (confirmation → backup → atomic write → your tests → automatic rollback on failure; **Undo** restores).
-* **Teach CodeFix** – add your own rules (see `docs/expanding-knowledge.md`).
+* **Skills & knowledge** – make rules (by example, call, import, regex or pattern), save them into a skill, edit or
+  delete them, create/enable/disable/delete/export skills, and **give CodeFix a skill file to learn** (paste or choose
+  a JSON file; *Check it* validates rule by rule, *Try on code* previews, *Learn* installs all-or-nothing).
+* **Rules & policy** – for every rule choose *check & fix as designed / report only / ignore completely / never apply
+  its fix*, how careful its fix must be, and paths to skip; plus global *allow risky* and *minimum confidence*.
+  Saved to `codefix.policy.json` and used by the terminal too.
 * **Help** – badges and safety notes.
 
 ## Security model
@@ -38,6 +44,7 @@ page may read/modify; default = the directory you launched from), `--config FILE
 
 All endpoints are JSON; send `X-CodeFix-Token` (from the page's `<meta name="codefix-token">`).
 `GET /api/state`, `POST /api/analyze {code}`, `/api/fix {code, selected[], apply_safe, repeat, format}`,
+`GET /api/skills`, `/api/skills/create|validate|learn|enable|delete|export|try|rule_delete`, `GET /api/policy`, `/api/policy/save|reset`,
 `/api/ls {path}`, `/api/review_path {path}`, `/api/fix_path {path, rules[], apply_safe, write, confirm}`,
 `/api/undo {path}`, `/api/rule {id}`, `GET /api/kb/list`, `/api/kb/learn`, `/api/kb/preview`, `/api/kb/save`,
 `/api/kb/delete`, `GET /api/kb/export`, `/api/kb/import`, `/api/feedback`.

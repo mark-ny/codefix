@@ -88,11 +88,33 @@ def load_examples(config: ProjectConfig) -> dict[str, list[dict[str, Any]]]:
                 for rid, exs in data.items():
                     if isinstance(exs, list):
                         merged.setdefault(rid, []).extend(exs)
+    for sf in skill_files(config):                      # examples travel inside skill files
+        data = read_skill(sf)
+        if data and sf.stem not in config.skills_disabled and isinstance(data.get("examples"), dict):
+            for rid, exs in data["examples"].items():
+                if isinstance(exs, list):
+                    merged.setdefault(rid, []).extend(exs)
     return merged
+
+
+def skill_files(config: ProjectConfig) -> list[Path]:
+    out: list[Path] = []
+    for d in knowledge_dirs(config):
+        out += sorted(f for f in (d / "skills").glob("*.json")) if (d / "skills").is_dir() else []
+    return out
+
+
+def read_skill(path: Path) -> dict[str, Any] | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def apply_knowledge(registry: RuleRegistry, config: ProjectConfig) -> None:
     """Merge documentation from the selected packs into the registry (never changes behaviour)."""
+    _register_skills(registry, config)
     packs = list(dict.fromkeys([*config.packs, "project"]))      # the project's own rules are always active
     for pf in load_pack_files(config, packs):
         for raw in pf.entries:
@@ -126,3 +148,20 @@ def _register_declarative(registry: RuleRegistry, raw: dict, pf: PackFile) -> No
         registry.register(build_rule(raw, pf.pack), f"declarative rule in {pf.path.name}")
     except RuleError as exc:
         registry.plugin_errors.append(f"{raw.get('id', '?')} ({pf.path.name}): {exc}")
+
+
+def _register_skills(registry: RuleRegistry, config: ProjectConfig) -> None:
+    """Every enabled skill file contributes its declarative rules."""
+    from .declarative import RuleError, build_rule
+    for sf in skill_files(config):
+        if sf.stem in config.skills_disabled:
+            continue
+        data = read_skill(sf)
+        if data is None:
+            registry.plugin_errors.append(f"skill {sf.name}: not valid JSON")
+            continue
+        for entry in data.get("rules", []):
+            try:
+                registry.register(build_rule(entry, f"skill:{sf.stem}"), f"skill {sf.stem}")
+            except (RuleError, KeyError, TypeError) as exc:
+                registry.plugin_errors.append(f"skill {sf.stem}: {entry.get('id', '?') if isinstance(entry, dict) else '?'}: {exc}")

@@ -55,6 +55,12 @@ tr.click{cursor:pointer}tr.click:hover{background:var(--code)}
 details{margin:6px 0}summary{cursor:pointer}
 .mode-only{display:none}.mode-example .m-example,.mode-call .m-call,.mode-import .m-import,.mode-regex .m-regex,.mode-pattern .m-pattern{display:block}
 .hide{display:none!important}
+.subtabs{display:flex;gap:4px;margin:0 0 10px;border-bottom:1px solid var(--line)}
+.subtabs button{background:none;border:0;border-bottom:2px solid transparent;padding:6px 12px;color:var(--mute);cursor:pointer;font:inherit}
+.subtabs button.on{color:var(--fg);border-bottom-color:var(--accent);font-weight:600}
+#out-code{min-height:330px;line-height:20px;background:var(--card)}
+.pane .empty{color:var(--mute);padding:6px 0}
+td select,td input{font-size:12.5px;padding:5px 6px}
 footer{max-width:1280px;margin:0 auto;padding:0 18px 30px;color:var(--mute);font-size:12.5px}
 </style>
 </head>
@@ -64,7 +70,8 @@ footer{max-width:1280px;margin:0 auto;padding:0 18px 30px;color:var(--mute);font
   <nav role="tablist">
     <button role="tab" data-tab="paste" aria-selected="true">Paste code</button>
     <button role="tab" data-tab="files" aria-selected="false">Files &amp; folders</button>
-    <button role="tab" data-tab="kb" aria-selected="false">Teach CodeFix</button>
+    <button role="tab" data-tab="kb" aria-selected="false">Skills &amp; knowledge</button>
+    <button role="tab" data-tab="policy" aria-selected="false">Rules &amp; policy</button>
     <button role="tab" data-tab="help" aria-selected="false">Help</button>
   </nav>
 </header>
@@ -73,36 +80,44 @@ footer{max-width:1280px;margin:0 auto;padding:0 18px 30px;color:var(--mute);font
 <!-- ============================ PASTE ============================ -->
 <section class="tab on" id="tab-paste">
  <div class="grid two">
-  <div>
-   <div class="card">
-    <h2>Your code</h2>
-    <textarea id="code" spellcheck="false" placeholder="Paste Python code here…  (Ctrl/Cmd+Enter to analyze)"></textarea>
-    <div class="row">
+  <div class="card">
+   <h2>1 · Your code <span class="note">(this box is never changed)</span></h2>
+   <textarea id="code" spellcheck="false" placeholder="Paste Python code here…  (Ctrl/Cmd+Enter to analyze)"></textarea>
+   <div class="row">
       <button class="btn" id="btn-analyze">Analyze</button>
-      <button class="btn" id="btn-fix">Fix selected + safe</button>
-      <button class="btn sec" id="btn-undo" disabled>Undo</button>
-      <button class="btn sec" id="btn-copy">Copy</button>
+      <button class="btn" id="btn-fix">Fix selected + safe →</button>
       <button class="btn sec" id="btn-sample">Load example</button>
       <button class="btn sec" id="btn-clear">Clear</button>
-    </div>
-    <div class="row">
+   </div>
+   <div class="row">
       <label class="inline"><input type="checkbox" id="opt-safe" checked> apply safe fixes automatically</label>
       <label class="inline"><input type="checkbox" id="opt-repeat"> repeat until nothing safe is left</label>
       <label class="inline"><input type="checkbox" id="opt-format"> run formatter (if configured)</label>
-    </div>
-    <p class="note">Pasted code never leaves your computer and is never written to disk. Review-level and risky fixes only happen when you tick them.</p>
    </div>
-   <div class="card hide" id="result-card"><h2>Result</h2><div id="result"></div></div>
+   <p class="note">Pasted code never leaves your computer and is never written to disk. Review-level and risky fixes only happen when you tick them in the list below.</p>
   </div>
-  <div class="card">
-   <h2>Findings <span class="note" id="fcount"></span></h2>
+  <div class="card" id="out-card">
+   <h2>2 · Fixed code <span class="note" id="out-status">appears here after you press Fix</span></h2>
+   <div class="subtabs" role="tablist">
+     <button class="on" data-pane="fixed">Fixed code</button><button data-pane="diff">What changed</button><button data-pane="report">Report</button>
+   </div>
+   <div class="pane" id="pane-fixed">
+     <textarea id="out-code" readonly spellcheck="false" placeholder="Your corrected code will appear in this box. The original on the left stays exactly as you pasted it."></textarea>
+     <div class="row"><button class="btn" id="out-copy">Copy fixed code</button><button class="btn sec" id="out-download">Download .py</button>
+       <button class="btn sec" id="out-use" title="Replace the left box with the fixed code, e.g. to fix more">Use as input ←</button></div>
+   </div>
+   <div class="pane hide" id="pane-diff"><p class="empty">No changes yet.</p></div>
+   <div class="pane hide" id="pane-report"><div id="result"><p class="empty">Nothing yet. Explanations, skipped fixes and syntax errors show up here.</p></div></div>
+  </div>
+ </div>
+ <div class="card">
+   <h2>3 · Findings <span class="note" id="fcount"></span></h2>
    <div class="row" style="margin-top:0">
      <button class="btn sec" id="sel-all">Tick all fixable</button>
      <button class="btn sec" id="sel-none">Clear ticks</button>
      <label class="inline"><input type="checkbox" id="show-report" checked> show report-only</label>
    </div>
    <div id="findings"><p class="note">Nothing analyzed yet.</p></div>
-  </div>
  </div>
 </section>
 
@@ -135,18 +150,19 @@ footer{max-width:1280px;margin:0 auto;padding:0 18px 30px;color:var(--mute);font
 <section class="tab" id="tab-kb">
  <div class="grid two">
   <div class="card mode-example" id="builder">
-   <h2>Teach CodeFix a new rule</h2>
-   <p class="note">Show it one example of what to flag (and what it should become). CodeFix learns a reusable pattern, tests it, and saves it as data in <code id="userfile">knowledge/project/user_rules.json</code>. No programming needed.</p>
-   <label for="k-mode">How do you want to describe it?</label>
+   <h2>Make a new rule (knowledge)</h2>
+   <p class="note">Show CodeFix one example of what to flag, and what it should become. It learns a reusable pattern, tests it, and saves it into a skill. No programming needed.</p>
+   <div class="row" style="gap:10px"><div style="flex:1;min-width:200px"><label for="k-skill">Add it to skill</label><select id="k-skill"><option value="my-rules">my-rules (default)</option></select></div>
+   <div style="flex:1;min-width:200px"><label for="k-mode">How do you want to describe it?</label>
    <select id="k-mode">
      <option value="example">Teach by example (recommended)</option>
      <option value="call">Flag a function call</option>
      <option value="import">Flag an import</option>
      <option value="regex">Search text (regex, report only)</option>
      <option value="pattern">Pattern with $variables (advanced)</option>
-   </select>
+   </select></div></div>
    <div class="row" style="gap:10px"><div style="flex:1;min-width:170px"><label for="k-id">Rule id</label><input id="k-id" placeholder="USER_NO_PRINT"></div>
-   <div style="width:130px"><label for="k-sev">Severity</label><select id="k-sev"><option>review</option><option>safe</option><option>risky</option></select></div>
+   <div style="width:130px"><label for="k-sev">If it fixes…</label><select id="k-sev"><option value="review">review: ask first</option><option value="safe">safe: automatic</option><option value="risky">risky: explicit OK</option></select></div>
    <div style="width:100px"><label for="k-conf">Confidence</label><input id="k-conf" type="number" step="0.05" min="0" max="1" value="0.9"></div></div>
    <label for="k-msg">Message shown with each finding</label><input id="k-msg" placeholder="Use logging instead of print()">
    <div class="mode-only m-call"><label>Function name (dotted)</label><input id="k-call" placeholder="os.system"><label>Rename the call to (optional fix)</label><input id="k-callrep" placeholder="subprocess.run"></div>
@@ -160,16 +176,26 @@ footer{max-width:1280px;margin:0 auto;padding:0 18px 30px;color:var(--mute);font
    <label for="k-neg">Code that must <b>not</b> be flagged <span class="note">(optional)</span></label>
    <textarea id="k-neg" style="min-height:70px" placeholder="if x is None:"></textarea>
    <label for="k-exp">Why? (optional explanation)</label><input id="k-exp">
-   <div class="row"><button class="btn" id="k-learn">Learn pattern</button><button class="btn sec" id="k-try">Try on code ↓</button><button class="btn" id="k-save">Save rule</button></div>
+   <div class="row"><button class="btn" id="k-learn">Learn pattern</button><button class="btn sec" id="k-try">Try on code →</button><button class="btn" id="k-save">Save rule</button><button class="btn sec" id="k-newform">New / clear form</button></div>
    <div id="k-out"></div>
   </div>
   <div>
    <div class="card"><h2>Try it on code</h2>
-    <textarea id="k-test" placeholder="Paste code to test the rule on…"></textarea>
+    <textarea id="k-test" placeholder="Paste code to test the rule (or a whole skill) on…"></textarea>
     <div class="row"><button class="btn sec" id="k-fromPaste">Use code from “Paste code”</button></div>
     <div id="k-preview"></div></div>
-   <div class="card"><h2>My rules</h2><div id="myrules"><p class="note">None yet.</p></div>
-    <div class="row"><button class="btn sec" id="k-export">Export</button><label class="inline"><span class="btn sec" style="padding:8px 14px;cursor:pointer">Import…</span><input type="file" id="k-import" accept=".json" class="hide"></label></div></div>
+   <div class="card"><h2>Skills <span class="note">(named bundles of rules your CodeFix has learned)</span></h2>
+    <div id="skills"><p class="note">Loading…</p></div>
+    <h3>Create a new skill</h3>
+    <div class="row" style="margin-top:0"><input id="sk-name" placeholder="my-team-habits" style="flex:1;min-width:140px"><input id="sk-title" placeholder="Title (optional)" style="flex:1;min-width:140px"><button class="btn" id="sk-new">Create</button></div>
+    <p class="note">Names use lowercase letters, digits and hyphens. After creating it, pick it in “Add it to skill” and save rules into it.</p></div>
+   <div class="card"><h2>Give CodeFix a skill to learn</h2>
+    <p class="note">Paste or choose a skill file (JSON) written by you or by your AI agent (see <code>AGENT_README.md</code>). Every rule is checked and self-tested first; nothing is installed unless all of them pass.</p>
+    <textarea id="sk-json" style="min-height:150px" placeholder='{"format":"codefix-skill","name":"my-skill","rules":[{"id":"MY_NO_PRINT","message":"Use logging","bad":"print(x)","good":"logger.info(x)","match":{"type":"pattern","pattern":"print($x)","replace":"logger.info($x)"}}]}'></textarea>
+    <div class="row"><label class="inline"><span class="btn sec" style="padding:8px 14px;cursor:pointer">Choose file…</span><input type="file" id="sk-file" accept=".json" class="hide"></label>
+      <button class="btn sec" id="sk-validate">Check it</button><button class="btn sec" id="sk-tryit">Try on the code above ↑</button><button class="btn" id="sk-learn">Learn this skill</button>
+      <label class="inline"><input type="checkbox" id="sk-replace"> replace if it already exists</label></div>
+    <div id="sk-report"></div></div>
   </div>
  </div>
  <div class="card"><h2>All rules <span class="note" id="rcount"></span></h2>
@@ -178,12 +204,26 @@ footer{max-width:1280px;margin:0 auto;padding:0 18px 30px;color:var(--mute);font
    <div id="rdetail"></div></div>
 </section>
 
+<!-- ============================ POLICY ============================ -->
+<section class="tab" id="tab-policy">
+ <div class="card"><h2>What should CodeFix fix — and what should it leave alone?</h2>
+   <p class="note">Decide per rule: fix it, only report it, or ignore it; how careful its fix must be; and which folders it should skip (for example <code>tests/*</code>). Saved to <code>codefix.policy.json</code> in your project, so the terminal and the page behave the same.</p>
+   <div class="row"><label class="inline"><input type="checkbox" id="p-risky"> allow risky fixes <span class="note">(they still need your OK and passing tests)</span></label>
+   <label class="inline">Ignore findings below confidence <input id="p-conf" type="number" min="0" max="1" step="0.05" style="width:90px"></label></div></div>
+ <div class="card">
+   <div class="row" style="margin-top:0"><input id="p-filter" placeholder="Filter rules…" style="flex:1;min-width:160px"><label class="inline"><input type="checkbox" id="p-changed"> only my changes</label>
+   <button class="btn" id="p-save">Save policy</button><button class="btn sec" id="p-reset">Reset everything</button></div>
+   <table><thead><tr><th>Rule</th><th>What to do</th><th>If it fixes, how careful?</th><th>Skip in these paths</th><th>Result</th></tr></thead><tbody id="p-table"></tbody></table>
+   <p class="note" id="p-file"></p></div>
+</section>
+
 <!-- ============================ HELP ============================ -->
 <section class="tab" id="tab-help">
  <div class="card"><h2>How it works</h2>
-  <p><b>Paste code</b> → <b>Analyze</b> lists problems. Tick the ones you want fixed (safe fixes are applied automatically unless you untick that box) → <b>Fix selected + safe</b>. The result replaces the text box; <b>Undo</b> brings back the previous version. Every result is parsed, compiled and checked to keep all functions and classes before you see it.</p>
+  <p><b>Paste code</b> → <b>Analyze</b> lists problems. Tick the ones you want fixed (safe fixes are applied automatically unless you untick that box) → <b>Fix selected + safe</b>. The corrected code appears in its own box on the right; your original is never changed, and <b>Use as input</b> lets you fix more. Every result is parsed, compiled and checked to keep all functions and classes before you see it.</p>
   <p><b>Files &amp; folders</b> → type a path (or Browse) → <b>Review</b> → choose rules → <b>Preview</b> (no writing) or <b>Apply</b> (backup → atomic write → your tests → automatic rollback if they fail). <code>codefix undo FILE</code> restores a backup from the terminal too.</p>
-  <p><b>Teach CodeFix</b> → give it an example of bad code (and what it should become). It learns a <code>$variable</code> pattern, tests it, and saves it as a normal rule that also works in the terminal (<code>codefix review</code>, <code>fix</code>, …). Share rules with <b>Export</b>/<b>Import</b>.</p></div>
+  <p><b>Skills &amp; knowledge</b> → make rules, group them into skills, enable/disable or edit them, or hand CodeFix a skill file to learn. <b>Rules &amp; policy</b> → choose what gets fixed, only reported, or ignored.</p>
+  <p><b>(Rules)</b> give it an example of bad code (and what it should become). It learns a <code>$variable</code> pattern, tests it, and saves it as a normal rule that also works in the terminal (<code>codefix review</code>, <code>fix</code>, …). Share rules with <b>Export</b>/<b>Import</b>.</p></div>
  <div class="card"><h2>What the badges mean</h2>
   <p><span class="badge b-auto">auto-fix</span> safe, high-confidence: applied automatically if enabled.
   <span class="badge b-confirm">needs your OK</span> review-level: only when ticked.
@@ -248,10 +288,11 @@ document.querySelectorAll("nav button").forEach(b => b.addEventListener("click",
   document.querySelectorAll("nav button").forEach(x => x.setAttribute("aria-selected", x === b));
   document.querySelectorAll("section.tab").forEach(s => s.classList.toggle("on", s.id === "tab-" + b.dataset.tab));
   if (b.dataset.tab === "kb") loadKb();
+  if (b.dataset.tab === "policy") loadPolicy();
 }));
 
 // ---------------------------------------------------------------- state
-let STATE = {}, history = [], lastFindings = [];
+let STATE = {}, lastFindings = [];
 async function init() {
   try {
     STATE = await api("/api/state");
@@ -284,12 +325,17 @@ def check(value):
     if type(value) == str:
         return 0
 `;
+function pane(name) {
+  document.querySelectorAll("#out-card .subtabs button").forEach(b => b.classList.toggle("on", b.dataset.pane === name));
+  ["fixed", "diff", "report"].forEach(p => $("pane-" + p).classList.toggle("hide", p !== name));
+}
+document.querySelectorAll("#out-card .subtabs button").forEach(b => b.addEventListener("click", () => pane(b.dataset.pane)));
 function renderFindings(list) {
   lastFindings = list;
   const box = $("findings"), showReport = $("show-report").checked;
   const shown = list.filter(f => showReport || f.action !== "report_only");
   $("fcount").textContent = list.length ? `(${list.length}, ${list.filter(f => f.fixable).length} fixable)` : "";
-  if (!list.length) { clear(box, h("p", { class: "good" }, "No problems found."), ); return; }
+  if (!list.length) { clear(box, h("p", { class: "good" }, "No problems found.")); return; }
   clear(box, shown.map(f => {
     const canTick = f.fixable && (f.action === "confirm" || f.action === "explicit");
     const tick = h("input", { type: "checkbox", "data-key": f.key, disabled: !canTick, "aria-label": "apply " + f.rule_id });
@@ -311,16 +357,26 @@ function gotoLine(a, b) {
 async function explain(id) {
   try {
     const s = await api("/api/rule", { id });
-    const el = h("div", {}, h("h3", {}, id + " — " + s.message), h("p", {}, s.explanation || s.description),
+    clear($("result"), h("h3", {}, id + " — " + s.message), h("p", {}, s.explanation || s.description),
       s.bad ? h("pre", {}, "Bad:\n" + s.bad + "\nGood:\n" + s.good) : null,
       s.false_positive ? h("p", { class: "note" }, "False positives: " + s.false_positive) : null,
       h("div", { class: "row" }, h("button", { class: "btn sec", onclick: () => feedback(id, "false_positive") }, "This was a false positive"),
-        h("button", { class: "btn sec", onclick: () => feedback(id, "helpful") }, "Helpful")));
-    clear($("result"), el); $("result-card").classList.remove("hide");
+        h("button", { class: "btn sec", onclick: () => feedback(id, "helpful") }, "Helpful"),
+        h("button", { class: "btn sec", onclick: () => { document.querySelector('nav button[data-tab=policy]').click(); $("p-filter").value = id; renderPolicy(); } }, "Change what CodeFix does with this rule")));
+    pane("report");
   } catch (e) { toast(e.message, true); }
 }
 async function feedback(rule_id, verdict) {
   try { const r = await api("/api/feedback", { rule_id, verdict }); toast(r.note); } catch (e) { toast(e.message, true); }
+}
+function showSyntax(sx) {
+  if (!sx) return;
+  const ctx = sx.context.map(c => (c.current ? "▶ " : "  ") + String(c.n).padStart(4) + " │ " + c.text).join("\n");
+  clear($("result"), h("p", { class: "err" }, `Syntax error on line ${sx.line}: ${sx.message}`),
+    h("p", { class: "note" }, "CodeFix will not touch code Python cannot parse. Fix this first (the line is highlighted in the box), then analyze again."),
+    h("pre", {}, ctx), sx.hints.length ? h("h3", {}, "Likely causes") : null,
+    h("ul", {}, sx.hints.map(t => h("li", {}, t))));
+  $("out-status").textContent = "nothing fixed: syntax error"; pane("report"); gotoLine(sx.line, sx.line);
 }
 async function analyze() {
   const code = $("code").value;
@@ -328,7 +384,7 @@ async function analyze() {
   const r = await guard($("btn-analyze"), () => api("/api/analyze", { code }));
   if (!r) return;
   renderFindings(r.findings);
-  if (!r.syntax_ok) toast("The code has a syntax error; fix it by hand first.", true);
+  if (!r.syntax_ok) showSyntax(r.syntax);
   return r;
 }
 async function fix() {
@@ -338,24 +394,36 @@ async function fix() {
   const r = await guard($("btn-fix"), () => api("/api/fix", { code, selected, apply_safe: $("opt-safe").checked,
     repeat: $("opt-repeat").checked, format: $("opt-format").checked }));
   if (!r) return;
-  const out = $("result"); $("result-card").classList.remove("hide");
-  if (!r.ok) { clear(out, h("p", { class: "err" }, r.error)); return; }
-  if (!r.changed) { clear(out, h("p", {}, "Nothing to change with the current selection."),
-    r.skipped.length ? h("ul", {}, r.skipped.map(s => h("li", {}, `${s.rule_id} (line ${s.line}): ${s.reason}`))) : null); return; }
-  history.push(code); $("btn-undo").disabled = false;
-  $("code").value = r.code;
-  clear(out, h("p", { class: "good" }, `Applied ${r.applied.length} fix(es). Checked: ${r.verification.join(", ")}.`),
+  if (!r.ok && r.syntax) { await analyze(); return; }
+  if (!r.ok) { clear($("result"), h("p", { class: "err" }, r.error)); $("out-status").textContent = "refused"; pane("report"); return; }
+  $("out-code").value = r.code;
+  if (!r.changed) {
+    $("out-status").textContent = "no changes were needed for this selection";
+    clear($("pane-diff"), h("p", { class: "empty" }, "No changes."));
+    clear($("result"), h("p", {}, "Nothing to change with the current selection."),
+      r.skipped.length ? h("ul", {}, r.skipped.map(s => h("li", {}, `${s.rule_id} (line ${s.line}): ${s.reason}`))) : null);
+    pane("fixed"); return;
+  }
+  $("out-status").textContent = `${r.applied.length} fix(es) applied · original untouched`;
+  clear($("pane-diff"), diffEl(r.diff));
+  clear($("result"), h("p", { class: "good" }, `Applied ${r.applied.length} fix(es). Checked: ${r.verification.join(", ")}.`),
     h("ul", {}, r.applied.map(a => h("li", {}, badge(a.severity, a.severity), " ", h("b", {}, a.rule_id), " line " + a.line + " — " + a.message))),
     r.skipped.length ? h("p", { class: "note" }, "Skipped: " + r.skipped.map(s => `${s.rule_id} (${s.reason})`).join("; ")) : null,
     r.warnings.length ? h("p", { class: "note" }, "Notes: " + r.warnings.join("; ")) : null,
-    h("details", { open: true }, h("summary", {}, "Diff"), diffEl(r.diff)));
-  renderFindings(r.remaining);
+    h("p", { class: "note" }, r.remaining.length ? `${r.remaining.length} finding(s) remain in the fixed code (they need a decision or have no automatic fix):` : "No findings remain in the fixed code."),
+    h("ul", {}, r.remaining.slice(0, 12).map(f => h("li", {}, h("b", {}, f.rule_id), " (fixed-code line " + f.line + ") — " + f.message))));
+  pane("fixed");
 }
 $("btn-analyze").onclick = analyze; $("btn-fix").onclick = fix;
-$("btn-undo").onclick = () => { if (history.length) { $("code").value = history.pop(); $("btn-undo").disabled = !history.length; analyze(); } };
-$("btn-copy").onclick = async () => { try { await navigator.clipboard.writeText($("code").value); toast("Copied."); } catch { $("code").select(); toast("Press Ctrl+C to copy."); } };
+$("out-copy").onclick = async () => { try { await navigator.clipboard.writeText($("out-code").value); toast("Fixed code copied."); } catch { $("out-code").select(); toast("Press Ctrl+C to copy."); } };
+$("out-download").onclick = () => {
+  const a = h("a", { href: URL.createObjectURL(new Blob([$("out-code").value], { type: "text/x-python" })), download: "fixed.py" });
+  document.body.append(a); a.click(); a.remove();
+};
+$("out-use").onclick = () => { if ($("out-code").value) { $("code").value = $("out-code").value; analyze(); toast("Fixed code moved to the input box."); } };
 $("btn-sample").onclick = () => { $("code").value = SAMPLE; analyze(); };
-$("btn-clear").onclick = () => { $("code").value = ""; clear($("findings"), h("p", { class: "note" }, "Nothing analyzed yet.")); $("result-card").classList.add("hide"); $("fcount").textContent = ""; };
+$("btn-clear").onclick = () => { $("code").value = ""; $("out-code").value = ""; $("out-status").textContent = "appears here after you press Fix";
+  clear($("findings"), h("p", { class: "note" }, "Nothing analyzed yet.")); clear($("pane-diff"), h("p", { class: "empty" }, "No changes yet.")); $("fcount").textContent = ""; };
 $("sel-all").onclick = () => document.querySelectorAll("#findings input[type=checkbox]:not(:disabled)").forEach(c => c.checked = true);
 $("sel-none").onclick = () => document.querySelectorAll("#findings input[type=checkbox]").forEach(c => c.checked = false);
 $("show-report").onchange = () => renderFindings(lastFindings);
@@ -421,13 +489,13 @@ async function undo(path) {
 $("btn-preview").onclick = () => runFix(false); $("btn-apply").onclick = () => runFix(true);
 
 // ---------------------------------------------------------------- knowledge tab
-let ALL = [], KBLOADED = false;
+let ALL = [], SKILLS = null;
 function setMode(m) { $("builder").className = "card mode-" + m; $("k-mode").value = m; }
 $("k-mode").onchange = () => setMode($("k-mode").value);
 function formData() {
   const mode = $("k-mode").value, d = { id: $("k-id").value.trim(), message: $("k-msg").value.trim(), severity: $("k-sev").value,
     confidence: parseFloat($("k-conf").value || "0.9"), bad: $("k-bad").value, good: $("k-good").value, explanation: $("k-exp").value,
-    negatives: $("k-neg").value.trim() ? [$("k-neg").value] : [] };
+    skill: $("k-skill").value, negatives: $("k-neg").value.trim() ? [$("k-neg").value] : [] };
   if (mode === "call") d.match = { type: "call", name: $("k-call").value.trim(), ...($("k-callrep").value.trim() ? { replace_with: $("k-callrep").value.trim() } : {}) };
   else if (mode === "import") d.match = { type: "import", module: $("k-mod").value.trim(), ...($("k-modrep").value.trim() ? { replace_with: $("k-modrep").value.trim() } : {}) };
   else if (mode === "regex") d.match = { type: "regex", pattern: $("k-rx").value, ...($("k-rxi").checked ? { flags: "i" } : {}) };
@@ -439,9 +507,7 @@ $("k-learn").onclick = async () => {
   if ($("k-mode").value !== "example") { toast("“Learn” is for the example mode. Use “Try on code” for the others."); return; }
   const d = formData();
   const r = await guard($("k-learn"), () => api("/api/kb/learn", d)); if (!r) return;
-  if (r.entry) {
-    $("k-pat").value = r.entry.match.pattern; $("k-rep").value = r.entry.match.replace || ""; setMode("pattern");
-  }
+  if (r.entry) { $("k-pat").value = r.entry.match.pattern; $("k-rep").value = r.entry.match.replace || ""; setMode("pattern"); }
   clear($("k-out"), r.ok ? h("p", { class: "good" }, "Learned. You can edit the pattern above, then try it and save.") : problems(r.problems),
     r.entry ? h("pre", {}, "pattern:  " + r.entry.match.pattern + (r.entry.match.replace != null ? "\nreplace:  " + r.entry.match.replace : "\n(report only)")) : null);
 };
@@ -449,12 +515,15 @@ $("k-try").onclick = async () => {
   const d = formData(); d.code = $("k-test").value || $("k-bad").value;
   const r = await guard($("k-try"), () => api("/api/kb/preview", d)); if (!r) return;
   if (!$("k-test").value) $("k-test").value = d.code;
-  clear($("k-preview"), !r.ok ? problems(r.problems) :
-    [h("p", { class: r.matches.length ? "good" : "note" }, r.matches.length ? `Flags ${r.matches.length} place(s):` : "Nothing flagged in that code."),
-     h("ul", {}, r.matches.map(m => h("li", {}, `line ${m.line}: ${m.message}`, m.after != null ? " → " + JSON.stringify(m.after) : ""))),
-     r.fixed != null ? h("details", { open: true }, h("summary", {}, "Fixed code"), h("pre", {}, r.fixed), diffEl(r.diff)) : null,
-     r.rejected.length ? h("p", { class: "err" }, "Rejected edits: " + r.rejected.join("; ")) : null]);
+  showPreview(r);
 };
+function showPreview(r) {
+  clear($("k-preview"), r.ok === false ? problems(r.problems) :
+    [h("p", { class: (r.matches || r.findings).length ? "good" : "note" }, (r.matches || r.findings).length ? `Flags ${(r.matches || r.findings).length} place(s):` : "Nothing flagged in that code."),
+     h("ul", {}, (r.matches || r.findings).map(m => h("li", {}, `line ${m.line}: ${m.message}`, m.after != null ? " → " + JSON.stringify(m.after) : ""))),
+     r.fixed != null ? h("details", { open: true }, h("summary", {}, "Fixed code"), h("pre", {}, r.fixed), diffEl(r.diff)) : null,
+     (r.rejected || []).length ? h("p", { class: "err" }, "Rejected edits: " + r.rejected.join("; ")) : null]);
+}
 $("k-save").onclick = async () => {
   const d = formData();
   let r = await guard($("k-save"), () => api("/api/kb/save", d)); if (!r) return;
@@ -462,25 +531,93 @@ $("k-save").onclick = async () => {
     if (!confirm(d.id + " already exists. Replace it?")) return;
     r = await guard($("k-save"), () => api("/api/kb/save", { ...d, replace: true })); if (!r) return;
   }
-  if (r.ok) { toast("Saved " + d.id + ". It is active everywhere now (browser and terminal)."); clear($("k-out")); loadKb(true); }
+  if (r.ok) { toast("Saved " + d.id + " into " + d.skill + ". It is active everywhere now (browser and terminal)."); clear($("k-out")); loadKb(); }
   else clear($("k-out"), h("p", { class: "err" }, "Not saved — the rule failed its checks:"), problems(r.problems));
 };
+$("k-newform").onclick = () => { ["k-id", "k-msg", "k-bad", "k-good", "k-neg", "k-exp", "k-call", "k-callrep", "k-mod", "k-modrep", "k-rx", "k-pat", "k-rep"].forEach(i => $(i).value = ""); setMode("example"); clear($("k-out")); };
 $("k-fromPaste").onclick = () => { $("k-test").value = $("code").value; };
-async function loadKb(force) {
-  const r = await guard(null, () => api("/api/kb/list")); if (!r) return;
-  ALL = r.rules; KBLOADED = true; $("userfile").textContent = r.user_file;
-  const mine = ALL.filter(x => x.user);
-  clear($("myrules"), mine.length ? mine.map(x => h("div", { class: "finding" }, h("span", {}), h("div", { class: "meta" }, h("b", {}, x.id), badge(x.severity, x.severity), badge(x.autofix ? "auto" : "report_only", x.autofix ? "has fix" : "report only"),
-      h("button", { class: "lnk", onclick: () => editRule(x) }, "edit"), h("button", { class: "lnk", onclick: () => delRule(x.id) }, "delete")), h("div", { class: "msg" }, x.message))) : h("p", { class: "note" }, "None yet — teach CodeFix something on the left."));
+
+async function loadKb() {
+  const [r, sk] = await Promise.all([guard(null, () => api("/api/kb/list")), guard(null, () => api("/api/skills"))]);
+  if (!r || !sk) return;
+  ALL = r.rules; SKILLS = sk;
+  const sel = $("k-skill"), cur = sel.value;
+  clear(sel, h("option", { value: "my-rules" }, "my-rules (default)"), sk.skills.filter(x => x.ok).map(x => h("option", { value: x.name }, x.name + (x.enabled ? "" : " (off)"))));
+  sel.value = [...sel.options].some(o => o.value === cur) ? cur : "my-rules";
+  renderSkills();
   r.errors.forEach(e => toast("Rule problem: " + e, true));
   renderRules();
+}
+function ruleRow(skill, x) {
+  return h("div", { class: "finding" }, h("span", {}), h("div", { class: "meta" }, h("b", {}, x.id), badge(x.severity || "review", x.severity || "review"),
+    badge(x.autofix ? "auto" : "report_only", x.autofix ? "has fix" : "report only"),
+    h("button", { class: "lnk", onclick: () => editRule(skill, x.id) }, "edit"), h("button", { class: "lnk", onclick: () => delRule(skill, x.id) }, "delete")),
+    h("div", { class: "msg" }, x.message));
+}
+function renderSkills() {
+  const mine = SKILLS.my_rules.map(r => ({ ...(ALL.find(a => a.id === r.id) || {}), id: r.id, message: r.message }));
+  const block = (name, title, desc, rules, enabled, builtin) => h("details", { open: name === "my-rules" || rules.length < 6 },
+    h("summary", {}, h("b", {}, name), " ", h("span", { class: "note" }, `${rules.length} rule(s) · ${title || desc || ""}`), enabled === false ? badge("report_only", "off") : null),
+    h("div", { class: "row", style: "margin:4px 0" },
+      builtin ? null : h("label", { class: "inline" }, h("input", { type: "checkbox", checked: enabled !== false, onchange: ev => toggleSkill(name, ev.target.checked) }), "enabled"),
+      h("button", { class: "btn sec", onclick: () => exportSkill(name) }, "Export"),
+      builtin ? null : h("button", { class: "btn sec", onclick: () => forgetSkill(name) }, "Delete skill")),
+    rules.length ? rules.map(x => ruleRow(name, x)) : h("p", { class: "note" }, "No rules yet — pick this skill in “Add it to skill” and save a rule."));
+  clear($("skills"), block("my-rules", "your personal rules", "", mine, true, true),
+    SKILLS.skills.map(s => s.ok ? block(s.name, s.title, s.description, s.rules, s.enabled, false) : h("p", { class: "err" }, `${s.name}: ${s.error}`)));
+}
+async function toggleSkill(name, enabled) {
+  const r = await guard(null, () => api("/api/skills/enable", { name, enabled })); if (!r) return;
+  if (!r.ok) toast(r.problems.join("; "), true); else toast(`${name} ${enabled ? "enabled" : "disabled"}.`);
+  loadKb();
+}
+async function forgetSkill(name) {
+  if (!confirm(`Delete the skill “${name}” and all its rules?`)) return;
+  const r = await guard(null, () => api("/api/skills/delete", { name })); if (r) { toast(r.ok ? "Deleted." : "Not found."); loadKb(); }
+}
+async function exportSkill(name) {
+  const r = name === "my-rules" ? await guard(null, () => api("/api/kb/export")) : await guard(null, () => api("/api/skills/export", { name }));
+  if (!r) return;
+  const data = name === "my-rules" ? { format: "codefix-skill", version: 1, name: "my-rules-export", title: "My rules", rules: r.rules, examples: r.examples } : r;
+  const a = h("a", { href: URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })), download: (data.name || name) + ".json" });
+  document.body.append(a); a.click(); a.remove();
+}
+$("sk-new").onclick = async () => {
+  const r = await guard($("sk-new"), () => api("/api/skills/create", { name: $("sk-name").value.trim(), title: $("sk-title").value.trim() })); if (!r) return;
+  if (r.ok) { toast("Skill created. Choose it in “Add it to skill”."); $("sk-name").value = ""; $("sk-title").value = ""; await loadKb(); }
+  else toast(r.problems.join("; "), true);
+};
+function skillData() {
+  try { return JSON.parse($("sk-json").value); } catch (e) { toast("That is not valid JSON: " + e.message, true); return null; }
+}
+function showSkillReport(r) {
+  clear($("sk-report"), r.learned ? h("p", { class: "good" }, `Learned “${r.name}”. It is active now in the page and the terminal.`) : null,
+    r.ok && !r.learned ? h("p", { class: "good" }, `Valid: ${r.rule_count} rule(s) passed their checks.`) : null,
+    (r.problems || []).length ? problems(r.problems) : null,
+    h("ul", {}, Object.entries(r.rules || {}).map(([id, ps]) => h("li", {}, ps.length ? h("span", { class: "err" }, "✗ " + id + ": " + ps.join("; ")) : h("span", { class: "good" }, "✓ " + id)))));
+}
+$("sk-file").onchange = async ev => { const f = ev.target.files[0]; if (f) { $("sk-json").value = await f.text(); ev.target.value = ""; } };
+$("sk-validate").onclick = async () => { const data = skillData(); if (!data) return; const r = await guard($("sk-validate"), () => api("/api/skills/validate", { data })); if (r) showSkillReport(r); };
+$("sk-learn").onclick = async () => {
+  const data = skillData(); if (!data) return;
+  const r = await guard($("sk-learn"), () => api("/api/skills/learn", { data, replace: $("sk-replace").checked })); if (!r) return;
+  showSkillReport(r); if (r.learned) { toast("Skill learned."); loadKb(); }
+};
+$("sk-tryit").onclick = async () => {
+  const data = skillData(); if (!data) return;
+  const code = $("k-test").value; if (!code.trim()) { toast("Paste code into “Try it on code” first.", true); return; }
+  const r = await guard($("sk-tryit"), () => api("/api/skills/try", { data, code })); if (r) { showPreview(r); toast("Result shown under “Try it on code”."); }
+};
+async function delRule(skill, id) {
+  if (!confirm("Delete the rule " + id + "?")) return;
+  const r = await guard(null, () => api("/api/skills/rule_delete", { skill, id })); if (r) { toast(r.ok ? "Deleted." : "Not found."); loadKb(); }
 }
 function renderRules() {
   const q = $("r-filter").value.toLowerCase();
   const rows = ALL.filter(x => !q || (x.id + " " + x.category + " " + x.message).toLowerCase().includes(q));
   $("rcount").textContent = `(${rows.length}/${ALL.length})`;
   clear($("rtable"), rows.map(x => h("tr", { class: "click", onclick: () => showRule(x) }, h("td", {}, h("b", {}, x.id), h("div", { class: "note" }, x.message)),
-    h("td", {}, x.category), h("td", {}, badge(x.severity, x.severity)), h("td", {}, x.autofix ? "yes" : "no"), h("td", {}, x.user ? "yours" : x.implemented ? "built-in" : "docs only"))));
+    h("td", {}, x.category), h("td", {}, badge(x.severity, x.severity)), h("td", {}, x.autofix ? "yes" : "no"), h("td", {}, x.skill ? "skill: " + x.skill : x.implemented ? "built-in" : "docs only"))));
 }
 $("r-filter").oninput = renderRules;
 function showRule(x) {
@@ -490,32 +627,63 @@ function showRule(x) {
     x.match ? h("pre", {}, JSON.stringify(x.match, null, 2)) : null);
   $("rdetail").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
-function editRule(x) {
-  const m = x.match || {}; setMode(m.type === "pattern" ? "pattern" : m.type || "pattern");
-  $("k-id").value = x.id; $("k-msg").value = x.message; $("k-sev").value = x.severity; $("k-conf").value = x.confidence;
-  $("k-bad").value = x.bad || ""; $("k-good").value = x.good || ""; $("k-exp").value = x.explanation || "";
+function editRule(skill, id) {
+  const x = ALL.find(a => a.id === id); if (!x) { toast("Rule not found.", true); return; }
+  const m = x.match || {}; setMode(m.type || "pattern");
+  $("k-skill").value = skill; $("k-id").value = x.id; $("k-msg").value = x.message; $("k-sev").value = x.severity; $("k-conf").value = x.confidence;
+  $("k-bad").value = x.bad || ""; $("k-good").value = x.good || ""; $("k-exp").value = x.explanation || ""; $("k-neg").value = "";
   $("k-call").value = m.name || ""; $("k-callrep").value = m.type === "call" ? m.replace_with || "" : "";
   $("k-mod").value = m.module || ""; $("k-modrep").value = m.type === "import" ? m.replace_with || "" : "";
   $("k-rx").value = m.type === "regex" ? m.pattern : ""; $("k-rxi").checked = (m.flags || "").includes("i");
   $("k-pat").value = m.type === "pattern" ? m.pattern : ""; $("k-rep").value = m.replace || "";
-  $("builder").scrollIntoView({ behavior: "smooth" }); toast("Loaded into the form; Save will ask before replacing.");
+  $("builder").scrollIntoView({ behavior: "smooth" }); toast("Loaded into the form. Change it, then Save (it will ask before replacing).");
 }
-async function delRule(id) {
-  if (!confirm("Delete the rule " + id + "?")) return;
-  const r = await guard(null, () => api("/api/kb/delete", { id })); if (r) { toast(r.ok ? "Deleted." : "Not found."); loadKb(true); }
+
+// ---------------------------------------------------------------- policy tab
+let POLICY = null, EDITS = {};
+const MODE_TEXT = { enabled: "Check & fix as designed", report_only: "Report only — never fix", disabled: "Ignore completely", blocked: "Never apply its fix" };
+const SEV_TEXT = { "": "default", safe: "Safe — fix automatically", review: "Review — ask me first", risky: "Risky — explicit OK + tests" };
+async function loadPolicy() {
+  const r = await guard(null, () => api("/api/policy")); if (!r) return;
+  POLICY = r; EDITS = {};
+  r.rules.forEach(x => EDITS[x.id] = { mode: x.mode, severity: x.severity || "", exclude: (x.exclude || []).join(", ") });
+  $("p-risky").checked = r.behavior.allow_risky; $("p-conf").value = r.behavior.minimum_confidence;
+  $("p-file").textContent = r.note + "  File: " + r.file;
+  renderPolicy();
 }
-$("k-export").onclick = async () => {
-  const r = await guard($("k-export"), () => api("/api/kb/export")); if (!r) return;
-  const a = h("a", { href: URL.createObjectURL(new Blob([JSON.stringify(r, null, 2)], { type: "application/json" })), download: "codefix-rules.json" });
-  document.body.append(a); a.click(); a.remove();
+function renderPolicy() {
+  if (!POLICY) return;
+  const q = $("p-filter").value.toLowerCase(), only = $("p-changed").checked;
+  const rows = POLICY.rules.filter(x => (!q || (x.id + " " + x.message + " " + x.category).toLowerCase().includes(q)) && (!only || x.customised));
+  clear($("p-table"), rows.map(x => {
+    const e = EDITS[x.id];
+    const mode = h("select", { "data-rule": x.id, "aria-label": x.id + " mode", onchange: ev => e.mode = ev.target.value },
+      Object.entries(MODE_TEXT).map(([v, t]) => h("option", { value: v, selected: e.mode === v }, t)));
+    const sev = h("select", { "aria-label": x.id + " severity", disabled: !x.autofix, onchange: ev => e.severity = ev.target.value },
+      Object.entries(SEV_TEXT).map(([v, t]) => h("option", { value: v, selected: e.severity === v }, v === "" ? `default (${x.default_severity})` : t)));
+    const exc = h("input", { placeholder: "tests/*, migrations/*", value: e.exclude, "aria-label": x.id + " skip paths", oninput: ev => e.exclude = ev.target.value });
+    return h("tr", {}, h("td", {}, h("b", {}, x.id), h("div", { class: "note" }, x.message), x.customised ? badge("review", "customised") : null),
+      h("td", {}, mode), h("td", {}, x.autofix ? sev : h("span", { class: "note" }, "no fix exists")), h("td", {}, exc),
+      h("td", {}, badge(x.effective, ACTION_TEXT[x.effective] || x.effective)));
+  }));
+}
+$("p-filter").oninput = renderPolicy; $("p-changed").onchange = renderPolicy;
+$("p-save").onclick = async () => {
+  if (!POLICY) return;
+  const rules = {};
+  for (const [id, e] of Object.entries(EDITS)) {
+    const exclude = e.exclude.split(",").map(x => x.trim()).filter(Boolean);
+    if (e.mode !== "enabled" || e.severity || exclude.length) rules[id] = { mode: e.mode, ...(e.severity ? { severity: e.severity } : {}), ...(exclude.length ? { exclude } : {}) };
+  }
+  const behavior = { allow_risky: $("p-risky").checked, minimum_confidence: parseFloat($("p-conf").value || "0.8") };
+  const r = await guard($("p-save"), () => api("/api/policy/save", { rules, behavior })); if (!r) return;
+  toast("Policy saved. It applies immediately, here and in the terminal."); POLICY = r;
+  r.rules.forEach(x => EDITS[x.id] = { mode: x.mode, severity: x.severity || "", exclude: (x.exclude || []).join(", ") });
+  renderPolicy(); init();
 };
-$("k-import").onchange = async ev => {
-  const f = ev.target.files[0]; if (!f) return;
-  let data; try { data = JSON.parse(await f.text()); } catch { toast("That file is not valid JSON.", true); return; }
-  const r = await guard(null, () => api("/api/kb/import", { data })); if (!r) return;
-  const bad = Object.entries(r.rejected);
-  toast(`Imported ${r.imported.length} rule(s)` + (bad.length ? `; rejected: ${bad.map(([k, v]) => k + " (" + v[0] + ")").join("; ")}` : "."), bad.length > 0);
-  ev.target.value = ""; loadKb(true);
+$("p-reset").onclick = async () => {
+  if (!confirm("Remove ALL your policy changes and go back to the defaults?")) return;
+  const r = await guard($("p-reset"), () => api("/api/policy/reset", { id: null })); if (r) { toast("Reset."); loadPolicy(); }
 };
 init();
 </script>

@@ -1,0 +1,33 @@
+{
+  "format": "codefix-skill",
+  "name": "team-conventions",
+  "title": "Team conventions",
+  "description": "Report-only guard rails plus one logging fix.",
+  "rules": [
+    {
+      "id": "TEAM_NO_PRINT",
+      "message": "Use the logger instead of print()",
+      "bad": "print(value)\n",
+      "good": "logger.info(value)\n",
+      "match": {"type": "pattern", "pattern": "print($value)", "replace": "logger.info($value)"}
+    },
+    {
+      "id": "TEAM_NO_EVAL",
+      "message": "eval() is banned by team policy",
+      "bad": "result = eval(text)\n",
+      "match": {"type": "call", "names": ["eval", "exec"]}
+    },
+    {
+      "id": "TEAM_NO_IMP",
+      "message": "The imp module is deprecated; use importlib",
+      "bad": "import imp\n",
+      "match": {"type": "import", "module": "imp"}
+    },
+    {
+      "id": "TEAM_TODO_TAG",
+      "message": "Unfinished work marker left in code",
+      "bad": "x = 1  # TODO later\n",
+      "match": {"type": "regex", "pattern": "TODO|FIXME", "flags": "i", "code_only": false}
+    }
+  ]
+}

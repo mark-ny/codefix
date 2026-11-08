@@ -1,6 +1,7 @@
 """Loading and validating ``codefix.toml``."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,91 @@ KNOWN: dict[str, set[str]] = {
 
 class ConfigError(Exception):
     pass
+
+
+OVERLAY_NAME = "codefix.policy.json"
+RULE_MODES = ("enabled", "report_only", "disabled", "blocked")
+SEVERITIES = ("safe", "review", "risky")
+
+
+def overlay_path(root: Path) -> Path:
+    return Path(root) / OVERLAY_NAME
+
+
+def validate_overlay(data: Any) -> dict[str, Any]:
+    """Validate and normalise the policy overlay (what to fix / not fix). Raises ConfigError."""
+    if not isinstance(data, dict):
+        raise ConfigError(f"{OVERLAY_NAME} must be a JSON object")
+    out: dict[str, Any] = {"version": 1, "rules": {}, "behavior": {}, "skills": {}}
+    for key in data:
+        if key not in ("version", "rules", "behavior", "skills", "note"):
+            raise ConfigError(f"{OVERLAY_NAME}: unknown key '{key}'")
+    for rid, ov in (data.get("rules") or {}).items():
+        if not isinstance(ov, dict):
+            raise ConfigError(f"{OVERLAY_NAME}: rules.{rid} must be an object")
+        extra = set(ov) - {"mode", "severity", "exclude"}
+        if extra:
+            raise ConfigError(f"{OVERLAY_NAME}: rules.{rid} has unknown keys {sorted(extra)}")
+        mode, sev, exc = ov.get("mode", "enabled"), ov.get("severity"), ov.get("exclude") or []
+        if mode not in RULE_MODES:
+            raise ConfigError(f"{OVERLAY_NAME}: rules.{rid}.mode must be one of {', '.join(RULE_MODES)}")
+        if sev is not None and sev not in SEVERITIES:
+            raise ConfigError(f"{OVERLAY_NAME}: rules.{rid}.severity must be one of {', '.join(SEVERITIES)}")
+        if not isinstance(exc, list) or not all(isinstance(x, str) and x.strip() for x in exc):
+            raise ConfigError(f"{OVERLAY_NAME}: rules.{rid}.exclude must be a list of glob patterns")
+        entry: dict[str, Any] = {}
+        if mode != "enabled":
+            entry["mode"] = mode
+        if sev:
+            entry["severity"] = sev
+        if exc:
+            entry["exclude"] = [x.strip() for x in exc]
+        if entry:
+            out["rules"][str(rid)] = entry
+    beh = data.get("behavior") or {}
+    if not isinstance(beh, dict) or set(beh) - {"allow_risky", "minimum_confidence"}:
+        raise ConfigError(f"{OVERLAY_NAME}: behavior may only contain allow_risky and minimum_confidence")
+    if "allow_risky" in beh:
+        if not isinstance(beh["allow_risky"], bool):
+            raise ConfigError(f"{OVERLAY_NAME}: behavior.allow_risky must be true or false")
+        out["behavior"]["allow_risky"] = beh["allow_risky"]
+    if "minimum_confidence" in beh:
+        v = beh["minimum_confidence"]
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 1:
+            raise ConfigError(f"{OVERLAY_NAME}: behavior.minimum_confidence must be between 0 and 1")
+        out["behavior"]["minimum_confidence"] = float(v)
+    for name, sk in (data.get("skills") or {}).items():
+        if not isinstance(sk, dict) or not isinstance(sk.get("enabled", True), bool):
+            raise ConfigError(f"{OVERLAY_NAME}: skills.{name}.enabled must be true or false")
+        if sk.get("enabled", True) is False:
+            out["skills"][str(name)] = {"enabled": False}
+    return out
+
+
+def read_overlay(root: Path) -> dict[str, Any]:
+    p = overlay_path(root)
+    if not p.is_file():
+        return {"version": 1, "rules": {}, "behavior": {}, "skills": {}}
+    try:
+        return validate_overlay(json.loads(p.read_text(encoding="utf-8")))
+    except (OSError, ValueError) as exc:
+        raise ConfigError(f"cannot read {p}: {exc}") from exc
+
+
+def write_overlay(root: Path, data: dict[str, Any]) -> dict[str, Any]:
+    from .patching.atomic_write import atomic_write_bytes
+    clean = validate_overlay(data)
+    atomic_write_bytes(overlay_path(root), (json.dumps(clean, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
+    return clean
+
+
+def apply_overlay(cfg: ProjectConfig) -> ProjectConfig:
+    ov = read_overlay(cfg.root)
+    cfg.rule_overrides = ov["rules"]
+    cfg.skills_disabled = sorted(ov["skills"])
+    for k, v in ov["behavior"].items():
+        setattr(cfg, k, v)
+    return cfg
 
 
 def find_config(start: Path) -> Path | None:
@@ -116,7 +202,7 @@ def parse_config(data: dict[str, Any], root: Path, config_file: Path | None = No
     if "modules" in pl: cfg.plugin_modules = _str_list("plugins", "modules", pl["modules"])
     if not cfg.backup_before_write:
         cfg.warnings.append("backup_before_write=false: undo and automatic rollback are unavailable")
-    return cfg
+    return apply_overlay(cfg)
 
 
 def load_config(start: str | Path | None = None, explicit: str | Path | None = None) -> ProjectConfig:
@@ -126,7 +212,7 @@ def load_config(start: str | Path | None = None, explicit: str | Path | None = N
         start_p = start_p.parent
     path = Path(explicit) if explicit else find_config(start_p)
     if path is None:                      # no config: the project root is where the user is working
-        return ProjectConfig(root=Path.cwd().resolve())
+        return apply_overlay(ProjectConfig(root=Path.cwd().resolve()))
     try:
         with open(path, "rb") as fh:
             data = tomllib.load(fh)

@@ -8,19 +8,22 @@ Safety model:
 """
 from __future__ import annotations
 
+import ast
 import io
+import re
 from pathlib import Path
 from typing import Any
 
 from ..application import CodeFix, FixOptions
-from ..config import load_config
+from ..config import ConfigError, apply_overlay, load_config
 from ..knowledge.declarative import RuleError, build_rule
 from ..knowledge.feedback import FeedbackStore
 from ..knowledge.registry import RuleRegistry, build_registry
+from ..knowledge.skills import SkillStore
 from ..knowledge.userpack import UserPack, entry_from_example, examples_for
 from ..models import Action, Finding, Severity
 from ..patching import PatchEngine, unified_diff
-from ..policy import iter_python_files
+from ..policy import iter_python_files, overrides
 from ..policy.project_policy import DEFAULT_EXCLUDE_DIRS
 from ..source import SourceError, SourceFile
 from ..verification import validate_change
@@ -34,6 +37,49 @@ class WebError(Exception):
     def __init__(self, message: str, status: int = 400):
         super().__init__(message)
         self.status = status
+
+
+_ODD_CHARS = {"\u2018": "curly quote ‘", "\u2019": "curly quote ’", "\u201c": "curly quote “", "\u201d": "curly quote ”",
+              "\u00a0": "non-breaking space", "\u200b": "zero-width space", "\u200c": "zero-width character",
+              "\u200d": "zero-width character", "\ufeff": "byte-order mark", "\u2013": "en dash –", "\u2014": "em dash —"}
+_ODD_RE = re.compile("[" + "".join(_ODD_CHARS) + "]")
+
+
+def syntax_help(code: str) -> dict[str, Any] | None:
+    """Explain a syntax error: the lines around it plus likely causes. ``None`` if the code parses."""
+    try:
+        ast.parse(code)
+        return None
+    except SyntaxError as exc:
+        msg, line, col = exc.msg or "invalid syntax", exc.lineno or 1, exc.offset or 1
+    except (ValueError, RecursionError) as exc:
+        return {"message": str(exc), "line": 1, "column": 1, "context": [], "hints": []}
+    lines = code.split("\n")
+    if len(lines) > 1 and lines[-1] == "":
+        lines.pop()                                  # the trailing newline is not a line of its own
+    line = max(1, min(line, len(lines)))
+    context = [{"n": i, "text": lines[i - 1], "current": i == line}
+               for i in range(max(1, line - 4), min(len(lines), line + 2) + 1)]
+    hints: list[str] = []
+    odd: dict[int, set[str]] = {}
+    for n, text in enumerate(lines[:line + 1], 1):
+        for ch in _ODD_RE.findall(text):
+            odd.setdefault(n, set()).add(_ODD_CHARS[ch])
+    for n, names in list(odd.items())[:4]:
+        hints.append(f"Line {n} contains {', '.join(sorted(names))}. This usually happens when code is copied from a web "
+                     "page, chat or document; Python needs plain straight quotes (' or \"), plain spaces and hyphens.")
+    stripped = lines[line - 1].strip()
+    if re.match(r"(else|elif|except|finally)\b", stripped) or "indent" in msg.lower():
+        hints.append("An else/elif/except/finally must line up exactly with the if/for/while/try it belongs to. "
+                     "Check the indentation of this line and of the block above it.")
+    if any(l.startswith("\t") for l in lines) and any(l.startswith("    ") for l in lines):
+        hints.append("The code mixes tab and space indentation. Convert it all to 4 spaces.")
+    if "never closed" in msg or "unterminated" in msg or "unexpected EOF" in msg or "invalid syntax" in msg:
+        hints.append("Python reports where it noticed the problem, which is often *after* the real mistake. "
+                     "Look at the lines just above for a missing closing bracket ) ] } or quote, or a missing colon.")
+    if "f-string" in msg:
+        hints.append("Check the braces and quotes inside the f-string; older Python versions cannot reuse the same quote inside it.")
+    return {"message": msg, "line": line, "column": col, "context": context, "hints": hints}
 
 
 def finding_key(f: Finding) -> str:
@@ -51,6 +97,7 @@ class WebService:
         cfg = load_config(start, self.config_file)
         if cfg.config_file is None:       # no codefix.toml: use the allowed folder that contains the target
             cfg.root = next((r for r in self.roots if r == start or r in start.parents), self.roots[0])
+            apply_overlay(cfg)            # policy/skill switches live in the project root, which is known only now
         return CodeFix(cfg, build_registry(cfg), out=io.StringIO())
 
     def resolve(self, raw: str) -> Path:
@@ -106,7 +153,8 @@ class WebService:
     def analyze_text(self, code: str) -> dict[str, Any]:
         app = self.app()
         res = app.engine.analyze_source(self._source(code))
-        return {"syntax_ok": res.syntax_ok, "lines": res.lines, "suppressed": res.suppressed, "warnings": res.warnings,
+        return {"syntax_ok": res.syntax_ok, "syntax": None if res.syntax_ok else syntax_help(code),
+                "lines": res.lines, "suppressed": res.suppressed, "warnings": res.warnings,
                 "findings": [self._describe(app, f) for f in res.findings],
                 "metrics": [m.to_dict() for m in res.metrics]}
 
@@ -117,7 +165,8 @@ class WebService:
         before = app.engine.analyze_source(src0)
         if not before.syntax_ok:
             return {"ok": False, "error": "The code has a syntax error, so nothing can be fixed yet: "
-                    + before.findings[0].message + f" (line {before.findings[0].line})", "code": code}
+                    + before.findings[0].message + f" (line {before.findings[0].line})", "code": code,
+                    "syntax": syntax_help(code)}
         chosen = set(selected or [])
         cur, applied, skipped = src0, [], []
         passes = app.config.max_passes if repeat else 1
@@ -238,11 +287,13 @@ class WebService:
         app = self.app()
         pack = UserPack(app.config)
         mine = {r["id"]: r for r in pack.load()}
+        skill_rules = {r["id"]: (sk["name"], r) for sk in SkillStore(app.config).list() for r in sk["rules"]}
         rules = []
         for s in app.registry.specs():
             d = s.to_dict()
             d["user"] = s.id in mine
-            d["match"] = mine.get(s.id, {}).get("match")
+            d["skill"] = skill_rules[s.id][0] if s.id in skill_rules else ("my-rules" if s.id in mine else None)
+            d["match"] = mine.get(s.id, {}).get("match") or (skill_rules[s.id][1]["match"] if s.id in skill_rules else None)
             rules.append(d)
         return {"rules": rules, "user_file": str(pack.path), "errors": app.registry.plugin_errors,
                 "feedback": FeedbackStore(app.config.root).summary()}
@@ -300,7 +351,13 @@ class WebService:
             examples = f.get("examples") or examples_for(entry, [n for n in (f.get("negatives") or []) if n.strip()])
         except RuleError as exc:
             return {"ok": False, "problems": [str(exc)]}
-        problems = UserPack(self.app().config).save(entry, examples, replace=bool(f.get("replace")))
+        app = self.app()
+        target = f.get("skill") or "my-rules"
+        if target != "my-rules":
+            rep = SkillStore(app.config).add_rule(target, entry, examples, replace=bool(f.get("replace")))
+            probs = rep["problems"] + [f"{k}: {p}" for k, v in rep["rules"].items() for p in v]
+            return {"ok": rep["ok"], "problems": probs}
+        problems = UserPack(app.config).save(entry, examples, replace=bool(f.get("replace")))
         return {"ok": not problems, "problems": problems}
 
     def kb_delete(self, rule_id: str) -> dict[str, Any]:
@@ -318,3 +375,74 @@ class WebService:
         except ValueError as exc:
             raise WebError(str(exc))
         return {"ok": True, "note": "recorded (advisory only; no rule was changed)"}
+
+
+    # ------------------------------------------------------------------- skills
+    def skills_list(self) -> dict[str, Any]:
+        app = self.app()
+        mine = UserPack(app.config).load()
+        return {"skills": SkillStore(app.config).list(), "dir": str(SkillStore(app.config).dir),
+                "my_rules": [{"id": r["id"], "message": r.get("message", "")} for r in mine]}
+
+    @staticmethod
+    def _report(rep: dict[str, Any]) -> dict[str, Any]:
+        rep.pop("data", None)
+        return rep
+
+    def skill_create(self, name: str, title: str = "", description: str = "") -> dict[str, Any]:
+        return self._report(SkillStore(self.app().config).create((name or "").strip(), title, description))
+
+    def skill_validate(self, data: Any) -> dict[str, Any]:
+        st = SkillStore(self.app().config)
+        return self._report(st.validate(data, replacing=data.get("name") if isinstance(data, dict) else None))
+
+    def skill_learn(self, data: Any, replace: bool = False) -> dict[str, Any]:
+        return self._report(SkillStore(self.app().config).learn(data, replace=replace))
+
+    def skill_enable(self, name: str, enabled: bool) -> dict[str, Any]:
+        probs = SkillStore(self.app().config).set_enabled(name, enabled)
+        return {"ok": not probs, "problems": probs}
+
+    def skill_delete(self, name: str) -> dict[str, Any]:
+        return {"ok": SkillStore(self.app().config).delete(name)}
+
+    def skill_export(self, name: str) -> dict[str, Any]:
+        data = SkillStore(self.app().config).export(name)
+        if data is None:
+            raise WebError(f"no skill named {name}", 404)
+        return data
+
+    def skill_try(self, data: Any, code: str) -> dict[str, Any]:
+        self._source(code)                         # size / type checks
+        return SkillStore(self.app().config).try_on(data, code)
+
+    def skill_rule_delete(self, name: str, rule_id: str) -> dict[str, Any]:
+        if name == "my-rules":
+            return {"ok": UserPack(self.app().config).delete(rule_id)}
+        return {"ok": SkillStore(self.app().config).remove_rule(name, rule_id)}
+
+    # ------------------------------------------------------------------- policy
+    def policy_get(self) -> dict[str, Any]:
+        app = self.app()
+        return {"rules": overrides.effective_rows(app.config, app.registry),
+                "behavior": {"allow_risky": app.config.allow_risky, "minimum_confidence": app.config.minimum_confidence},
+                "file": str(app.config.root / "codefix.policy.json"),
+                "note": "Saved to codefix.policy.json next to your project; the terminal uses it too."}
+
+    def policy_save(self, rules: Any, behavior: Any) -> dict[str, Any]:
+        app = self.app()
+        if not isinstance(rules, dict):
+            raise WebError("'rules' must be an object")
+        known = {s.id for s in app.registry.specs()}
+        unknown = sorted(set(rules) - known)
+        if unknown:
+            raise WebError("unknown rule(s): " + ", ".join(unknown))
+        try:
+            overrides.set_many(app.config, rules, behavior if isinstance(behavior, dict) else None)
+        except ConfigError as exc:
+            raise WebError(str(exc))
+        return self.policy_get()
+
+    def policy_reset(self, rule_id: str | None) -> dict[str, Any]:
+        overrides.reset(self.app().config, rule_id or None)
+        return self.policy_get()
